@@ -3,29 +3,38 @@ import { HydratedDocument } from 'mongoose';
 
 @Schema({ timestamps: true })
 export class User {
-  @Prop({ required: true, trim: true })
-  name: string;
-
   @Prop({
-    required: false,
+    required: true,
     unique: true,
-    sparse: true,
     lowercase: true,
     trim: true,
+    index: true,
   })
-  email?: string;
+  email: string;
+
+  @Prop({ select: false })
+  passwordHash?: string;
 
   @Prop({ required: false, unique: true, sparse: true, trim: true })
-  whatsappNumber?: string;
+  phoneNumber?: string;
 
-  @Prop({ required: true, select: false })
-  passwordHash: string;
+  @Prop({ trim: true })
+  fullName?: string;
+
+  @Prop({ trim: true })
+  walletAddress?: string;
+
+  @Prop({ select: false })
+  encryptedPrivateKey?: string;
 
   @Prop({ select: false })
   transactionPin?: string;
 
-  @Prop({ default: true })
-  isActive: boolean;
+  @Prop({ default: false })
+  isPinSet: boolean;
+
+  @Prop({ default: false })
+  isEmailVerified: boolean;
 }
 
 export type UserDocument = HydratedDocument<User>;

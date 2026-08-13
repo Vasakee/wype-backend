@@ -64,6 +64,7 @@ describe('Swagger document', () => {
       expect.arrayContaining([
         '/api/health',
         '/api/auth/register',
+        '/api/auth/verify-magic-link',
         '/api/auth/login',
         '/api/auth/pin',
         '/api/users/me',

@@ -2,9 +2,11 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   Body,
   Controller,
+  Get,
   HttpCode,
   HttpStatus,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -20,13 +22,27 @@ import { JwtAuthGuard } from './jwt-auth.guard';
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
-  @ApiOperation({ summary: 'Register a new account (email and/or WhatsApp)' })
+  @ApiOperation({
+    summary:
+      'Start registration with an email — sends a magic link to verify it',
+  })
   @Post('register')
   register(@Body() dto: RegisterDto) {
     return this.authService.register(dto);
   }
 
-  @ApiOperation({ summary: 'Login with email or WhatsApp number + password' })
+  @ApiOperation({
+    summary:
+      'Verify the magic link — creates the account, generates a wallet, and returns a JWT',
+  })
+  @Get('verify-magic-link')
+  verifyMagicLink(@Query('token') token: string) {
+    return this.authService.verifyMagicLink(token);
+  }
+
+  @ApiOperation({
+    summary: 'Login with email or phone number + password (fallback)',
+  })
   @Post('login')
   @HttpCode(HttpStatus.OK)
   login(@Body() dto: LoginDto) {

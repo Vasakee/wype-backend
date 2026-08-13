@@ -44,6 +44,8 @@ export class WalletService {
       this.blockchainService.registerAddress(user.email, saved.address);
     }
 
+    await this.usersService.setWallet(userId, saved.address);
+
     return saved;
   }
 

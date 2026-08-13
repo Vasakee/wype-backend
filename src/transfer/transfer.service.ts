@@ -88,8 +88,8 @@ export class TransferService {
 
     const identities: Array<Record<string, string>> = [];
     if (user.email) identities.push({ recipientEmail: user.email });
-    if (user.whatsappNumber) {
-      identities.push({ recipientWhatsapp: user.whatsappNumber });
+    if (user.phoneNumber) {
+      identities.push({ recipientWhatsapp: user.phoneNumber });
     }
 
     const escrows = await this.transferModel
@@ -139,7 +139,7 @@ export class TransferService {
     const recipient = params.recipientEmail
       ? await this.usersService.findByEmail(params.recipientEmail)
       : params.recipientWhatsapp
-        ? await this.usersService.findByWhatsappNumber(params.recipientWhatsapp)
+        ? await this.usersService.findByPhoneNumber(params.recipientWhatsapp)
         : null;
 
     if (!recipient && !params.recipientEmail) {
@@ -254,7 +254,7 @@ export class TransferService {
     transfer: TransferDocument,
     recipient: UserDocument | null,
   ): Promise<void> {
-    if (!recipient?.whatsappNumber) return;
+    if (!recipient?.phoneNumber) return;
 
     const amount = `${fromMinorUnits(transfer.amount)} ${transfer.currency}`;
     const message =
@@ -263,7 +263,7 @@ export class TransferService {
         : `You received ${amount} via Wype.`;
 
     await this.whatsappService
-      .sendMessage(recipient.whatsappNumber, message)
+      .sendMessage(recipient.phoneNumber, message)
       .catch(() => undefined);
   }
 
@@ -272,7 +272,7 @@ export class TransferService {
     pin: string,
   ): Promise<UserDocument> {
     const user = await this.usersService.findByIdWithPin(userId);
-    if (!user || !user.isActive) {
+    if (!user || !user.isEmailVerified) {
       throw new UnauthorizedException('Unauthorized');
     }
     if (!user.transactionPin) {

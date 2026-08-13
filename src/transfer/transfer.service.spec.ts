@@ -22,7 +22,7 @@ describe('TransferService', () => {
   let usersService: {
     findByIdWithPin: jest.Mock;
     findByEmail: jest.Mock;
-    findByWhatsappNumber: jest.Mock;
+    findByPhoneNumber: jest.Mock;
   };
   let walletService: {
     findByUserId: jest.Mock;
@@ -41,13 +41,13 @@ describe('TransferService', () => {
   const pinHash = bcrypt.hashSync('1234', 4);
   const sender = {
     _id: SENDER_ID,
-    isActive: true,
+    isEmailVerified: true,
     transactionPin: pinHash,
-    whatsappNumber: '+15550000001',
+    phoneNumber: '+15550000001',
   };
   const recipient = {
     _id: RECIPIENT_ID,
-    whatsappNumber: '+15550000002',
+    phoneNumber: '+15550000002',
   };
 
   beforeEach(async () => {
@@ -55,7 +55,7 @@ describe('TransferService', () => {
     usersService = {
       findByIdWithPin: jest.fn().mockResolvedValue(sender),
       findByEmail: jest.fn(),
-      findByWhatsappNumber: jest.fn(),
+      findByPhoneNumber: jest.fn(),
     };
     walletService = {
       findByUserId: jest

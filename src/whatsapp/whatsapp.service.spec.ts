@@ -11,7 +11,7 @@ const WHATSAPP_NUMBER = '+15550000001';
 describe('WhatsappService', () => {
   let service: WhatsappService;
   let usersService: {
-    findByWhatsappNumber: jest.Mock;
+    findByPhoneNumber: jest.Mock;
     setTransactionPin: jest.Mock;
   };
   let transferService: { sendByWhatsapp: jest.Mock };
@@ -26,7 +26,7 @@ describe('WhatsappService', () => {
 
   beforeEach(async () => {
     usersService = {
-      findByWhatsappNumber: jest.fn().mockResolvedValue({ _id: USER_ID }),
+      findByPhoneNumber: jest.fn().mockResolvedValue({ _id: USER_ID }),
       setTransactionPin: jest.fn().mockResolvedValue({}),
     };
     transferService = { sendByWhatsapp: jest.fn() };
@@ -49,7 +49,7 @@ describe('WhatsappService', () => {
 
   describe('unknown user', () => {
     it('tells unregistered numbers to create an account', async () => {
-      usersService.findByWhatsappNumber.mockResolvedValue(null);
+      usersService.findByPhoneNumber.mockResolvedValue(null);
 
       const reply = await service.processIncomingMessage(
         WHATSAPP_NUMBER,

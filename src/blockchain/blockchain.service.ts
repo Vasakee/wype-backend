@@ -10,6 +10,11 @@ export interface EscrowReceipt extends BlockchainReceipt {
   escrowId: string;
 }
 
+export interface GeneratedWallet {
+  address: string;
+  encryptedPrivateKey: string;
+}
+
 /**
  * Mock of the on-chain layer (Quai Network).
  *
@@ -70,6 +75,20 @@ export class BlockchainService {
     return {
       txHash: `0xmock-claim-${emailHash.slice(0, 8)}-${this.randomId()}`,
     };
+  }
+
+  /**
+   * Mock of key generation + client-side encryption. A real integration will
+   * generate a Quai keypair (quais.js), encrypt the private key with the user's
+   * password, and store the ciphertext.
+   */
+  generateWallet(): GeneratedWallet {
+    const address = `0x${randomBytes(20).toString('hex')}`;
+    const privateKey = `0x${randomBytes(32).toString('hex')}`;
+    const encryptedPrivateKey = `mock:v1:${Buffer.from(privateKey).toString(
+      'base64',
+    )}`;
+    return { address, encryptedPrivateKey };
   }
 
   private async simulateLatency(): Promise<void> {

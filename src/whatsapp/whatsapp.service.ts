@@ -57,7 +57,7 @@ export class WhatsappService {
   }
 
   async processIncomingMessage(from: string, body: string): Promise<string> {
-    const user = await this.usersService.findByWhatsappNumber(from);
+    const user = await this.usersService.findByPhoneNumber(from);
     if (!user) {
       return 'You are not registered on Wype yet. Create an account and add your WhatsApp number to send money.';
     }

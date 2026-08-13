@@ -37,7 +37,7 @@ describe('UsersService', () => {
   });
 
   describe('findByIdentity', () => {
-    it('searches by email or whatsapp number', async () => {
+    it('searches by email or phone number', async () => {
       mockModel.findOne.mockReturnValue({
         exec: jest.fn().mockResolvedValue(null),
       });
@@ -45,7 +45,7 @@ describe('UsersService', () => {
       await service.findByIdentity('+14155552671');
 
       expect(mockModel.findOne).toHaveBeenCalledWith({
-        $or: [{ email: '+14155552671' }, { whatsappNumber: '+14155552671' }],
+        $or: [{ email: '+14155552671' }, { phoneNumber: '+14155552671' }],
       });
     });
   });
