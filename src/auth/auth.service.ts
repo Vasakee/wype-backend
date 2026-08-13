@@ -29,6 +29,9 @@ export class AuthService {
     }
 
     const passwordHash = await bcrypt.hash(dto.password, BCRYPT_ROUNDS);
+    const transactionPin = dto.transactionPin
+      ? await bcrypt.hash(dto.transactionPin, BCRYPT_ROUNDS)
+      : undefined;
 
     const user = await this.usersService
       .create({
@@ -36,6 +39,7 @@ export class AuthService {
         email: dto.email,
         whatsappNumber: dto.whatsappNumber,
         passwordHash,
+        transactionPin,
       })
       .catch((error: unknown) => {
         if ((error as { code?: number }).code === 11000) {
@@ -61,6 +65,11 @@ export class AuthService {
     return this.buildAuthResponse(user);
   }
 
+  async setPin(userId: string, pin: string) {
+    await this.usersService.setTransactionPin(userId, pin);
+    return { message: 'Transaction PIN updated' };
+  }
+
   private async buildAuthResponse(user: UserDocument) {
     const payload: JwtPayload = {
       sub: user._id.toString(),
@@ -75,6 +84,7 @@ export class AuthService {
         name: user.name,
         email: user.email,
         whatsappNumber: user.whatsappNumber,
+        hasTransactionPin: Boolean(user.transactionPin),
       },
     };
   }

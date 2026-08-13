@@ -1,13 +1,17 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
+import * as bcrypt from 'bcrypt';
 import { Model } from 'mongoose';
 import { User, UserDocument } from './schemas/user.schema';
+
+const BCRYPT_ROUNDS = 10;
 
 export interface CreateUserParams {
   name: string;
   email?: string;
   whatsappNumber?: string;
   passwordHash: string;
+  transactionPin?: string;
 }
 
 @Injectable()
@@ -18,6 +22,10 @@ export class UsersService {
 
   findById(id: string): Promise<UserDocument | null> {
     return this.userModel.findById(id).exec();
+  }
+
+  findByIdWithPin(id: string): Promise<UserDocument | null> {
+    return this.userModel.findById(id).select('+transactionPin').exec();
   }
 
   findByEmail(email: string): Promise<UserDocument | null> {
@@ -46,6 +54,16 @@ export class UsersService {
       ],
     };
     return this.userModel.findOne(query).select('+passwordHash').exec();
+  }
+
+  async setTransactionPin(
+    userId: string,
+    pin: string,
+  ): Promise<UserDocument | null> {
+    const transactionPin = await bcrypt.hash(pin, BCRYPT_ROUNDS);
+    return this.userModel
+      .findByIdAndUpdate(userId, { transactionPin }, { new: true })
+      .exec();
   }
 
   async create(params: CreateUserParams): Promise<UserDocument> {

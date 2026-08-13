@@ -5,6 +5,8 @@ import {
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
+import { BlockchainService } from '../blockchain/blockchain.service';
+import { UsersService } from '../users/users.service';
 import { Wallet, WalletDocument } from './schemas/wallet.schema';
 
 @Injectable()
@@ -12,6 +14,8 @@ export class WalletService {
   constructor(
     @InjectModel(Wallet.name)
     private readonly walletModel: Model<WalletDocument>,
+    private readonly usersService: UsersService,
+    private readonly blockchainService: BlockchainService,
   ) {}
 
   findById(id: string): Promise<WalletDocument | null> {
@@ -33,7 +37,14 @@ export class WalletService {
     }
 
     const wallet = new this.walletModel({ userId, address });
-    return wallet.save();
+    const saved = await wallet.save();
+
+    const user = await this.usersService.findById(userId);
+    if (user?.email) {
+      this.blockchainService.registerAddress(user.email, saved.address);
+    }
+
+    return saved;
   }
 
   async credit(userId: string, amount: string): Promise<WalletDocument> {

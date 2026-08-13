@@ -1,0 +1,90 @@
+import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { createHash, randomBytes } from 'node:crypto';
+
+export interface BlockchainReceipt {
+  txHash: string;
+}
+
+export interface EscrowReceipt extends BlockchainReceipt {
+  escrowId: string;
+}
+
+/**
+ * Mock of the on-chain layer (Quai Network).
+ *
+ * Implements the same surface a real integration will expose once it talks
+ * to the Registry.sol / Escrow.sol contracts via quais.js. Nothing here moves
+ * real funds — it only simulates transaction hashes and an in-memory
+ * email-hash → wallet-address registry.
+ */
+@Injectable()
+export class BlockchainService {
+  private readonly registry = new Map<string, string>();
+  private readonly rpcUrl: string;
+
+  constructor(configService: ConfigService) {
+    this.rpcUrl = configService.get<string>('QUAI_RPC_URL') ?? '';
+  }
+
+  hashEmail(email: string): string {
+    return createHash('sha256')
+      .update(email.trim().toLowerCase())
+      .digest('hex');
+  }
+
+  registerAddress(email: string, address: string): void {
+    this.registry.set(this.hashEmail(email), address);
+  }
+
+  resolveEmail(emailHash: string): string | null {
+    return this.registry.get(emailHash) ?? null;
+  }
+
+  async directTransfer(
+    toAddress: string,
+    amount: string,
+  ): Promise<BlockchainReceipt> {
+    this.ensureConfigured();
+    await this.simulateLatency();
+    return {
+      txHash: `0xmock-direct-${amount}-${toAddress.slice(-4)}-${this.randomId()}`,
+    };
+  }
+
+  async depositToEscrow(
+    emailHash: string,
+    amount: string,
+  ): Promise<EscrowReceipt> {
+    this.ensureConfigured();
+    await this.simulateLatency();
+    return {
+      txHash: `0xmock-escrow-${amount}-${this.randomId()}`,
+      escrowId: emailHash,
+    };
+  }
+
+  async claimEscrow(emailHash: string): Promise<BlockchainReceipt> {
+    this.ensureConfigured();
+    await this.simulateLatency();
+    return {
+      txHash: `0xmock-claim-${emailHash.slice(0, 8)}-${this.randomId()}`,
+    };
+  }
+
+  private async simulateLatency(): Promise<void> {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+
+  private ensureConfigured(): void {
+    if (!this.rpcUrl) {
+      throw new Error(
+        'QUAI_RPC_URL is not configured. Set it before performing blockchain operations.',
+      );
+    }
+  }
+
+  private randomId(): string {
+    return randomBytes(8).toString('hex');
+  }
+}

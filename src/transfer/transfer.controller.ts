@@ -1,3 +1,4 @@
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   Body,
   Controller,
@@ -8,24 +9,58 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import type { AuthenticatedRequest } from '../auth/interfaces/authenticated-request.interface';
-import { CreateTransferDto } from './dto/create-transfer.dto';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { ClaimEscrowDto } from './dto/claim-escrow.dto';
+import { CreateEmailTransferDto } from './dto/create-email-transfer.dto';
+import { CreateWhatsappTransferDto } from './dto/create-whatsapp-transfer.dto';
 import { TransferService } from './transfer.service';
 
-@Controller('transfers')
+@ApiTags('transfer')
+@ApiBearerAuth()
+@Controller('transfer')
 @UseGuards(JwtAuthGuard)
 export class TransferController {
   constructor(private readonly transferService: TransferService) {}
 
-  @Post()
+  @ApiOperation({
+    summary: 'Send QUAI by email',
+    description:
+      'Direct transfer if the recipient email is in the Registry; otherwise the funds are deposited into escrow.',
+  })
+  @Post('email')
   @HttpCode(HttpStatus.CREATED)
-  create(@Req() req: AuthenticatedRequest, @Body() dto: CreateTransferDto) {
-    return this.transferService.create(req.user.sub, dto);
+  sendByEmail(
+    @Req() req: AuthenticatedRequest,
+    @Body() dto: CreateEmailTransferDto,
+  ) {
+    return this.transferService.sendByEmail(req.user.sub, dto);
   }
 
-  @Get()
-  list(@Req() req: AuthenticatedRequest) {
-    return this.transferService.findByUser(req.user.sub);
+  @ApiOperation({
+    summary: 'Send QUAI by WhatsApp number (used internally by the bot)',
+  })
+  @Post('whatsapp')
+  @HttpCode(HttpStatus.CREATED)
+  sendByWhatsapp(
+    @Req() req: AuthenticatedRequest,
+    @Body() dto: CreateWhatsappTransferDto,
+  ) {
+    return this.transferService.sendByWhatsapp(req.user.sub, dto);
+  }
+
+  @ApiOperation({ summary: 'List the last 50 transfers (sent & received)' })
+  @Get('history')
+  history(@Req() req: AuthenticatedRequest) {
+    return this.transferService.getHistory(req.user.sub);
+  }
+
+  @ApiOperation({
+    summary: 'Claim escrowed funds sent to your email/WhatsApp',
+  })
+  @Post('claim-escrow')
+  @HttpCode(HttpStatus.OK)
+  claimEscrow(@Req() req: AuthenticatedRequest, @Body() dto: ClaimEscrowDto) {
+    return this.transferService.claimEscrow(req.user.sub, dto.pin);
   }
 }

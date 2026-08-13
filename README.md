@@ -188,6 +188,8 @@ Generate a strong `JWT_SECRET`, e.g. `openssl rand -base64 48`.
 
 All endpoints are prefixed with `/api`. Amounts are **strings in minor units** to avoid floating-point precision issues.
 
+> **Interactive docs:** run the server and open **http://localhost:3000/api/docs** (Swagger UI). Authenticated endpoints use the "Authorize" button (paste the JWT from register/login).
+
 ### Health
 
 **`GET /api/health`** — no auth
@@ -241,6 +243,18 @@ Returns the same shape as register.
 
 Returns the authenticated user's profile. The password hash is never returned (`select: false`).
 
+### Auth PIN
+
+**`POST /api/auth/pin`** — Bearer token
+
+Set or update the 4-digit Transaction PIN (bcrypt-hashed).
+
+```json
+{ "pin": "4829" }
+```
+
+You can also pass an optional `transactionPin` when registering. The PIN is required for every transfer and escrow claim (and can be set over WhatsApp with `set pin 4829`).
+
 ### Wallet
 
 **`GET /api/wallet`** — Bearer token
@@ -255,34 +269,40 @@ Link a Quai wallet address (one per user).
 { "address": "0x1234...abcd" }
 ```
 
-### Transfers
+### Transfer (core flow)
 
-**`GET /api/transfers`** — Bearer token
+All transfer endpoints are authenticated and **require a valid 4-digit `pin`**.
 
-Lists the last 50 transfers where the user is sender or recipient.
+**`POST /api/transfer/email`** — Bearer token
 
-**`POST /api/transfers`** — Bearer token
-
-Create a transfer to a registered Wype user by email or WhatsApp number.
+Send QUAI to a recipient by email. If the recipient's email is registered in the Registry (i.e. they have linked a wallet), the transfer is **direct**; otherwise the funds are deposited into **escrow**.
 
 ```json
 {
   "recipientEmail": "sam@example.com",
-  "amount": "25000",
-  "currency": "QUAI"
+  "amount": "25",
+  "currency": "QUAI",
+  "pin": "4829"
 }
 ```
 
-or with a WhatsApp recipient:
+**`POST /api/transfer/whatsapp`** — Bearer token
+
+Same flow initiated by a WhatsApp number (`recipientWhatsapp` in E.164, or `recipientEmail`).
+
+**`GET /api/transfer/history`** — Bearer token
+
+Lists the last 50 transfers where the user is sender or recipient.
+
+**`POST /api/transfer/claim-escrow`** — Bearer token
+
+Claims escrowed funds sent to the authenticated user's email/WhatsApp. Requires their PIN.
 
 ```json
-{
-  "recipientWhatsapp": "+15555550100",
-  "amount": "25000"
-}
+{ "pin": "4829" }
 ```
 
-The recipient is resolved by identity; if they have a WhatsApp number, they are notified automatically. `currency` defaults to `QUAI`.
+Returns `{ "claimed": <count>, "transfers": [<transfer ids>] }` and credits the user's wallet.
 
 ### WhatsApp
 
@@ -291,12 +311,20 @@ The recipient is resolved by identity; if they have a WhatsApp number, they are 
 Send an outbound WhatsApp message via Twilio.
 
 ```json
-{ "to": "+15555550100", "body": "You received 25000 QUAI via Wype." }
+{ "to": "+15555550100", "body": "You received 25 QUAI via Wype." }
 ```
 
 **`POST /api/whatsapp/webhook`** — no auth (Twilio calls this)
 
 Inbound webhook. Twilio posts form-encoded message data; the endpoint replies with **TwiML**. Point your Twilio WhatsApp Sandbox "when a message comes in" URL here.
+
+The bot understands:
+
+```
+User: set pin 4829                     # one-step PIN setup
+User: set pin                          # two-step: bot prompts, then you reply with the PIN
+User: Send 10 QUAI to john@gmail.com   # start a payment (bot asks for your PIN to confirm)
+```
 
 ---
 

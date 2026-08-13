@@ -4,8 +4,19 @@ import { HydratedDocument, Types } from 'mongoose';
 export enum TransferStatus {
   Pending = 'pending',
   Processing = 'processing',
+  Escrowed = 'escrowed',
   Completed = 'completed',
   Failed = 'failed',
+}
+
+export enum TransferType {
+  Direct = 'direct',
+  Escrow = 'escrow',
+}
+
+export enum TransferChannel {
+  Web = 'web',
+  Whatsapp = 'whatsapp',
 }
 
 @Schema({ timestamps: true })
@@ -35,8 +46,31 @@ export class Transfer {
   })
   status: TransferStatus;
 
+  @Prop({
+    required: true,
+    enum: TransferType,
+    default: TransferType.Direct,
+  })
+  type: TransferType;
+
+  @Prop({
+    required: true,
+    enum: TransferChannel,
+    default: TransferChannel.Web,
+  })
+  channel: TransferChannel;
+
   @Prop()
   txHash?: string;
+
+  @Prop()
+  escrowId?: string;
+
+  @Prop()
+  pinVerifiedAt?: Date;
+
+  @Prop()
+  claimedAt?: Date;
 }
 
 export type TransferDocument = HydratedDocument<Transfer>;
