@@ -82,7 +82,7 @@ describe('TransferService', () => {
         { provide: UsersService, useValue: usersService },
         { provide: WalletService, useValue: walletService },
         { provide: BlockchainService, useValue: blockchainService },
-        { provide: WhatsappService, useValue: whatsappService },
+        { provide: 'WHATSAPP_SERVICE', useValue: whatsappService },
       ],
     }).compile();
 

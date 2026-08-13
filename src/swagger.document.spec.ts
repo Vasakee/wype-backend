@@ -83,8 +83,10 @@ describe('Swagger document', () => {
     const spec = (
       app as unknown as { wypeSpec: { paths: Record<string, unknown> } }
     ).wypeSpec;
-    const email = spec.paths['/api/transfer/email'];
-    const op = email['post'] as { security?: unknown[] };
-    expect(op.security).toEqual([{ bearer: [] }]);
+    const email = spec.paths['/api/transfer/email'] as {
+      post?: { security?: unknown[] };
+    };
+    const op = email.post;
+    expect(op?.security).toEqual([{ bearer: [] }]);
   });
 });

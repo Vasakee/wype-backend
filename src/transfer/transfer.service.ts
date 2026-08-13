@@ -4,7 +4,6 @@ import {
   Injectable,
   NotFoundException,
   UnauthorizedException,
-  forwardRef,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import * as bcrypt from 'bcrypt';
@@ -13,7 +12,7 @@ import { BlockchainService } from '../blockchain/blockchain.service';
 import type { UserDocument } from '../users/schemas/user.schema';
 import { UsersService } from '../users/users.service';
 import { WalletService } from '../wallet/wallet.service';
-import { WhatsappService } from '../whatsapp/whatsapp.service';
+import type { WhatsappService } from '../whatsapp/whatsapp.service';
 import { CreateEmailTransferDto } from './dto/create-email-transfer.dto';
 import { CreateWhatsappTransferDto } from './dto/create-whatsapp-transfer.dto';
 import {
@@ -43,7 +42,7 @@ export class TransferService {
     private readonly usersService: UsersService,
     private readonly walletService: WalletService,
     private readonly blockchainService: BlockchainService,
-    @Inject(forwardRef(() => WhatsappService))
+    @Inject('WHATSAPP_SERVICE')
     private readonly whatsappService: WhatsappService,
   ) {}
 
