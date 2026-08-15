@@ -18,6 +18,19 @@ export class User {
   @Prop({ required: false, unique: true, sparse: true, trim: true })
   phoneNumber?: string;
 
+  @Prop({
+    required: false,
+    unique: true,
+    sparse: true,
+    lowercase: true,
+    trim: true,
+    index: true,
+  })
+  username?: string;
+
+  @Prop()
+  usernameClaimedAt?: Date;
+
   @Prop({ trim: true })
   fullName?: string;
 

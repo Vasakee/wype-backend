@@ -26,7 +26,7 @@ export class TransferController {
   @ApiOperation({
     summary: 'Send QUAI by email',
     description:
-      'Direct transfer if the recipient email is in the Registry; otherwise the funds are deposited into escrow.',
+      'Direct transfer if the recipient email belongs to a registered user; otherwise the funds are deposited into escrow for 7 days.',
   })
   @Post('email')
   @HttpCode(HttpStatus.CREATED)

@@ -12,4 +12,13 @@ export class IncomingMessageDto {
 
   @Allow()
   Body?: string;
+
+  @Allow()
+  NumMedia?: string;
+
+  @Allow()
+  MediaUrl0?: string;
+
+  @Allow()
+  MediaContentType0?: string;
 }

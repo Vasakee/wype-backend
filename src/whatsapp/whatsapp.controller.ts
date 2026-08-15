@@ -22,16 +22,22 @@ export class WhatsappController {
   @ApiOperation({
     summary: 'Twilio inbound webhook (TwiML response)',
     description:
-      'Point your Twilio WhatsApp Sandbox "when a message comes in" URL here. Supports "Send 10 QUAI to <email|phone>" and "set pin 1234" flows.',
+      'Point your Twilio WhatsApp Sandbox "when a message comes in" URL here. Unregistered numbers get WhatsApp onboarding (email + emailed code + PIN setup). Registered numbers support "Send 10 QUAI to <email|phone|username>" text commands, voice notes that say the same, and "set pin 1234".',
   })
   @Post('webhook')
   @HttpCode(HttpStatus.OK)
   @Header('Content-Type', 'text/xml')
   async handleWebhook(@Body() incoming: IncomingMessageDto): Promise<string> {
     const from = (incoming.From ?? '').replace(/^whatsapp:/, '');
+    const hasMedia = Number(incoming.NumMedia ?? 0) > 0;
+
     const reply = await this.whatsappService.processIncomingMessage(
       from,
       incoming.Body ?? '',
+      {
+        mediaUrl: hasMedia ? incoming.MediaUrl0 : undefined,
+        mediaContentType: hasMedia ? incoming.MediaContentType0 : undefined,
+      },
     );
 
     const response = new twilio.twiml.MessagingResponse();

@@ -3,15 +3,16 @@ import { HydratedDocument, Types } from 'mongoose';
 
 export enum TransferStatus {
   Pending = 'pending',
-  Processing = 'processing',
-  Escrowed = 'escrowed',
   Completed = 'completed',
   Failed = 'failed',
+  Escrowed = 'escrowed',
+  Reversed = 'reversed',
 }
 
 export enum TransferType {
-  Direct = 'direct',
-  Escrow = 'escrow',
+  Send = 'send',
+  Claim = 'claim',
+  Reverse = 'reverse',
 }
 
 export enum TransferChannel {
@@ -49,7 +50,7 @@ export class Transfer {
   @Prop({
     required: true,
     enum: TransferType,
-    default: TransferType.Direct,
+    default: TransferType.Send,
   })
   type: TransferType;
 
@@ -59,6 +60,9 @@ export class Transfer {
     default: TransferChannel.Web,
   })
   channel: TransferChannel;
+
+  @Prop()
+  escrowExpiry?: Date;
 
   @Prop()
   txHash?: string;

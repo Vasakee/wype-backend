@@ -1,12 +1,22 @@
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { Controller, Get, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Post,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import type { AuthenticatedRequest } from '../auth/interfaces/authenticated-request.interface';
+import { ClaimUsernameDto } from './dto/claim-username.dto';
 import { UsersService } from './users.service';
 
 @ApiTags('users')
 @ApiBearerAuth()
-@Controller('users')
+@Controller('user')
 @UseGuards(JwtAuthGuard)
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
@@ -15,5 +25,20 @@ export class UsersController {
   @Get('me')
   getProfile(@Req() req: AuthenticatedRequest) {
     return this.usersService.findById(req.user.sub);
+  }
+
+  @ApiOperation({
+    summary:
+      'Claim a custom username (optional, does not affect email/phone identity)',
+    description:
+      'Sets a unique username on the user. Throws 409 if it is already taken.',
+  })
+  @Post('claim-username')
+  @HttpCode(HttpStatus.OK)
+  claimUsername(
+    @Req() req: AuthenticatedRequest,
+    @Body() dto: ClaimUsernameDto,
+  ) {
+    return this.usersService.claimUsername(req.user.sub, dto.username);
   }
 }

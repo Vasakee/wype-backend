@@ -19,7 +19,7 @@ export class CreateWhatsappTransferDto {
 
   @ApiProperty({
     description:
-      'Recipient WhatsApp number in E.164 (either this or recipientEmail)',
+      'Recipient WhatsApp number in E.164 (either this, recipientEmail or recipientUsername)',
     example: '+15555550100',
     required: false,
   })
@@ -28,6 +28,17 @@ export class CreateWhatsappTransferDto {
     message: 'recipientWhatsapp must be in E.164 format, e.g. +14155552671',
   })
   recipientWhatsapp?: string;
+
+  @ApiProperty({
+    description:
+      'Recipient Wype username, e.g. basil.quai (either this, recipientEmail or recipientWhatsapp)',
+    example: 'basil.quai',
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  recipientUsername?: string;
 
   @ApiProperty({
     description: 'Amount in QUAI (major units)',

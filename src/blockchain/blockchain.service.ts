@@ -77,6 +77,33 @@ export class BlockchainService {
     };
   }
 
+  async reverseEscrow(
+    emailHash: string,
+    amount: string,
+  ): Promise<BlockchainReceipt> {
+    this.ensureConfigured();
+    await this.simulateLatency();
+    return {
+      txHash: `0xmock-reverse-${amount}-${this.randomId()}`,
+    };
+  }
+
+  /**
+   * Mock of moving funds from Wype's custodial address to the user's own
+   * self-custody wallet. A real integration will send the balance on-chain so
+   * the user can manage it in a non-custodial wallet like Blip Pay.
+   */
+  async moveToSelfCustody(
+    toAddress: string,
+    amount: string,
+  ): Promise<BlockchainReceipt> {
+    this.ensureConfigured();
+    await this.simulateLatency();
+    return {
+      txHash: `0xmock-selfcustody-${amount}-${toAddress.slice(-4)}-${this.randomId()}`,
+    };
+  }
+
   /**
    * Mock of key generation + client-side encryption. A real integration will
    * generate a Quai keypair (quais.js), encrypt the private key with the user's

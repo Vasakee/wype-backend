@@ -66,7 +66,25 @@ export class AuthService {
       throw new BadRequestException('Magic link is invalid or has expired');
     }
 
-    const existing = await this.usersService.findByEmail(pending.email);
+    return this.createVerifiedUser({
+      email: pending.email,
+      fullName: pending.fullName,
+      phoneNumber: pending.phoneNumber,
+      passwordHash: pending.passwordHash,
+    });
+  }
+
+  /**
+   * Creates a verified account with a freshly generated self-custody wallet and
+   * its custodial ledger. Shared by magic-link verification and WhatsApp onboarding.
+   */
+  async createVerifiedUser(params: {
+    email: string;
+    fullName?: string;
+    phoneNumber?: string;
+    passwordHash?: string;
+  }) {
+    const existing = await this.usersService.findByEmail(params.email);
     if (existing) {
       throw new ConflictException('An account with this email already exists');
     }
@@ -75,10 +93,10 @@ export class AuthService {
       this.blockchainService.generateWallet();
 
     const user = await this.usersService.create({
-      email: pending.email,
-      fullName: pending.fullName,
-      phoneNumber: pending.phoneNumber,
-      passwordHash: pending.passwordHash,
+      email: params.email,
+      fullName: params.fullName,
+      phoneNumber: params.phoneNumber,
+      passwordHash: params.passwordHash,
       isEmailVerified: true,
       walletAddress: address,
       encryptedPrivateKey,
@@ -132,6 +150,7 @@ export class AuthService {
         email: user.email,
         fullName: user.fullName,
         phoneNumber: user.phoneNumber,
+        username: user.username,
         walletAddress: user.walletAddress,
         isEmailVerified: user.isEmailVerified,
         hasTransactionPin: user.isPinSet,

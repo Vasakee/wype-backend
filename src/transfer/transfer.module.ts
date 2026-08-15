@@ -1,5 +1,6 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
+import { EscrowModule } from '../escrow/escrow.module';
 import { UsersModule } from '../users/users.module';
 import { WalletModule } from '../wallet/wallet.module';
 import { WhatsappModule } from '../whatsapp/whatsapp.module';
@@ -16,6 +17,7 @@ import { TransferService } from './transfer.service';
     forwardRef(() => WhatsappModule),
     UsersModule,
     WalletModule,
+    EscrowModule,
   ],
   controllers: [TransferController],
   providers: [

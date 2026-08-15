@@ -1,14 +1,9 @@
-import {
-  BadRequestException,
-  Inject,
-  Injectable,
-  NotFoundException,
-  UnauthorizedException,
-} from '@nestjs/common';
+import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import * as bcrypt from 'bcrypt';
 import { Model, Types } from 'mongoose';
 import { BlockchainService } from '../blockchain/blockchain.service';
+import { EmailService } from '../email/email.service';
+import { EscrowService, ESCROW_DURATION_MS } from '../escrow/escrow.service';
 import type { UserDocument } from '../users/schemas/user.schema';
 import { UsersService } from '../users/users.service';
 import { WalletService } from '../wallet/wallet.service';
@@ -32,6 +27,7 @@ interface ExecuteTransferParams {
   channel: TransferChannel;
   recipientEmail?: string;
   recipientWhatsapp?: string;
+  recipientUsername?: string;
 }
 
 @Injectable()
@@ -42,6 +38,8 @@ export class TransferService {
     private readonly usersService: UsersService,
     private readonly walletService: WalletService,
     private readonly blockchainService: BlockchainService,
+    private readonly escrowService: EscrowService,
+    private readonly emailService: EmailService,
     @Inject('WHATSAPP_SERVICE')
     private readonly whatsappService: WhatsappService,
   ) {}
@@ -71,6 +69,8 @@ export class TransferService {
       currency: dto.currency ?? 'QUAI',
       channel: TransferChannel.Whatsapp,
       recipientWhatsapp: dto.recipientWhatsapp,
+      recipientEmail: dto.recipientEmail,
+      recipientUsername: dto.recipientUsername,
     });
   }
 
@@ -82,48 +82,14 @@ export class TransferService {
       .exec();
   }
 
-  async claimEscrow(userId: string, pin: string) {
-    const user = await this.verifyUserAndPin(userId, pin);
-
-    const identities: Array<Record<string, string>> = [];
-    if (user.email) identities.push({ recipientEmail: user.email });
-    if (user.phoneNumber) {
-      identities.push({ recipientWhatsapp: user.phoneNumber });
-    }
-
-    const escrows = await this.transferModel
-      .find({ status: TransferStatus.Escrowed, $or: identities })
-      .exec();
-
-    if (escrows.length === 0) {
-      throw new NotFoundException('No escrowed funds found for your account');
-    }
-
-    const claimed: string[] = [];
-    for (const escrow of escrows) {
-      const escrowKey = escrow.recipientEmail ?? escrow.recipientWhatsapp;
-      if (!escrowKey) continue;
-
-      await this.blockchainService.claimEscrow(
-        this.blockchainService.hashEmail(escrowKey),
-      );
-      await this.walletService.credit(userId, escrow.amount);
-
-      escrow.recipient = user._id;
-      escrow.status = TransferStatus.Completed;
-      escrow.claimedAt = new Date();
-      await escrow.save();
-
-      claimed.push(escrow._id.toString());
-    }
-
-    return { claimed: claimed.length, transfers: claimed };
+  claimEscrow(userId: string, pin: string) {
+    return this.escrowService.claim(userId, pin);
   }
 
   private async executeTransfer(
     params: ExecuteTransferParams,
   ): Promise<TransferDocument> {
-    await this.verifyUserAndPin(params.userId, params.pin);
+    await this.usersService.verifyTransactionPin(params.userId, params.pin);
 
     const amount = toMinorUnits(params.amount);
     if (BigInt(amount) <= 0n) {
@@ -137,10 +103,22 @@ export class TransferService {
 
     const recipient = params.recipientEmail
       ? await this.usersService.findByEmail(params.recipientEmail)
-      : params.recipientWhatsapp
-        ? await this.usersService.findByPhoneNumber(params.recipientWhatsapp)
-        : null;
+      : params.recipientUsername
+        ? await this.usersService.findByUsername(params.recipientUsername)
+        : params.recipientWhatsapp
+          ? await this.usersService.findByPhoneNumber(params.recipientWhatsapp)
+          : null;
 
+    if (!recipient && params.recipientWhatsapp) {
+      throw new BadRequestException(
+        'Recipient WhatsApp number must be registered on Wype',
+      );
+    }
+    if (!recipient && params.recipientUsername) {
+      throw new BadRequestException(
+        'Recipient username must be registered on Wype',
+      );
+    }
     if (!recipient && !params.recipientEmail) {
       throw new BadRequestException('Recipient is required');
     }
@@ -149,69 +127,48 @@ export class TransferService {
       throw new BadRequestException('You cannot send money to yourself');
     }
 
-    const registeredAddress = await this.resolveRecipientAddress(
-      params,
-      recipient,
-    );
-
-    const transfer = registeredAddress
-      ? await this.runDirectTransfer(
-          params,
-          recipient,
-          registeredAddress,
-          amount,
-        )
+    const transfer = recipient
+      ? await this.runDirectTransfer(params, recipient, amount)
       : await this.runEscrowTransfer(params, amount);
+
+    if (transfer.status === TransferStatus.Escrowed) {
+      void this.escrowService.reverseExpiredEscrows().catch(() => undefined);
+    }
 
     await this.notifyRecipient(transfer, recipient);
 
     return transfer;
   }
 
-  private async resolveRecipientAddress(
-    params: ExecuteTransferParams,
-    recipient: UserDocument | null,
-  ): Promise<string | null> {
-    if (params.recipientEmail) {
-      const emailHash = this.blockchainService.hashEmail(params.recipientEmail);
-      return this.blockchainService.resolveEmail(emailHash);
-    }
-
-    if (recipient) {
-      return (
-        (await this.walletService.findByUserId(recipient._id.toString()))
-          ?.address ?? null
-      );
-    }
-
-    return null;
-  }
-
   private async runDirectTransfer(
     params: ExecuteTransferParams,
-    recipient: UserDocument | null,
-    toAddress: string,
+    recipient: UserDocument,
     amount: string,
   ): Promise<TransferDocument> {
+    const toAddress = (
+      await this.walletService.findByUserId(recipient._id.toString())
+    )?.address;
+    if (!toAddress) {
+      throw new BadRequestException('Recipient has not linked a wallet yet');
+    }
+
     const receipt = await this.blockchainService.directTransfer(
       toAddress,
       amount,
     );
 
     await this.walletService.debit(params.userId, amount);
-    if (recipient) {
-      await this.walletService.credit(recipient._id.toString(), amount);
-    }
+    await this.walletService.credit(recipient._id.toString(), amount);
 
     return this.transferModel.create({
       sender: new Types.ObjectId(params.userId),
-      recipient: recipient?._id,
+      recipient: recipient._id,
       recipientEmail: params.recipientEmail,
       recipientWhatsapp: params.recipientWhatsapp,
       amount,
       currency: params.currency,
       channel: params.channel,
-      type: TransferType.Direct,
+      type: TransferType.Send,
       status: TransferStatus.Completed,
       txHash: receipt.txHash,
       pinVerifiedAt: new Date(),
@@ -226,6 +183,7 @@ export class TransferService {
     if (!escrowKey) {
       throw new BadRequestException('Recipient is required');
     }
+
     const emailHash = this.blockchainService.hashEmail(escrowKey);
     const receipt = await this.blockchainService.depositToEscrow(
       emailHash,
@@ -241,8 +199,9 @@ export class TransferService {
       amount,
       currency: params.currency,
       channel: params.channel,
-      type: TransferType.Escrow,
+      type: TransferType.Send,
       status: TransferStatus.Escrowed,
+      escrowExpiry: new Date(Date.now() + ESCROW_DURATION_MS),
       escrowId: receipt.escrowId,
       txHash: receipt.txHash,
       pinVerifiedAt: new Date(),
@@ -253,35 +212,28 @@ export class TransferService {
     transfer: TransferDocument,
     recipient: UserDocument | null,
   ): Promise<void> {
-    if (!recipient?.phoneNumber) return;
-
     const amount = `${fromMinorUnits(transfer.amount)} ${transfer.currency}`;
-    const message =
-      transfer.status === TransferStatus.Escrowed
-        ? `${amount} was sent to you via Wype. Create an account to claim it.`
-        : `You received ${amount} via Wype.`;
 
-    await this.whatsappService
-      .sendMessage(recipient.phoneNumber, message)
-      .catch(() => undefined);
-  }
+    if (recipient?.phoneNumber) {
+      const message =
+        transfer.status === TransferStatus.Escrowed
+          ? `${amount} was sent to you via Wype. Create an account to claim it.`
+          : `You received ${amount} via Wype.`;
 
-  private async verifyUserAndPin(
-    userId: string,
-    pin: string,
-  ): Promise<UserDocument> {
-    const user = await this.usersService.findByIdWithPin(userId);
-    if (!user || !user.isEmailVerified) {
-      throw new UnauthorizedException('Unauthorized');
+      await this.whatsappService
+        .sendMessage(recipient.phoneNumber, message)
+        .catch(() => undefined);
     }
-    if (!user.transactionPin) {
-      throw new BadRequestException(
-        'Set a transaction PIN before sending money',
+
+    if (
+      transfer.status === TransferStatus.Escrowed &&
+      transfer.recipientEmail
+    ) {
+      this.emailService.send(
+        transfer.recipientEmail,
+        'You received money on Wype',
+        `You received ${amount} via Wype. Create an account with ${transfer.recipientEmail} within 7 days to claim it.`,
       );
     }
-    if (!(await bcrypt.compare(pin, user.transactionPin))) {
-      throw new UnauthorizedException('Invalid transaction PIN');
-    }
-    return user;
   }
 }
