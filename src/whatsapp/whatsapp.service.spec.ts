@@ -5,6 +5,7 @@ import { FeesService } from '../fees/fees.service';
 import { TransferService } from '../transfer/transfer.service';
 import { UsersService } from '../users/users.service';
 import { VoiceService } from '../voice/voice.service';
+import { WalletService } from '../wallet/wallet.service';
 import { WhatsappAuthService } from './whatsapp-auth.service';
 import { WhatsappService } from './whatsapp.service';
 
@@ -20,6 +21,7 @@ describe('WhatsappService', () => {
   let transferService: { sendByWhatsapp: jest.Mock };
   let voiceService: { transcribeVoiceNote: jest.Mock };
   let feesService: { calculate: jest.Mock };
+  let walletService: { findByUserId: jest.Mock };
   let whatsappAuth: { initiate: jest.Mock; verify: jest.Mock };
 
   const configService = {
@@ -38,6 +40,12 @@ describe('WhatsappService', () => {
     transferService = { sendByWhatsapp: jest.fn() };
     voiceService = { transcribeVoiceNote: jest.fn() };
     feesService = { calculate: jest.fn().mockReturnValue('0.05') };
+    walletService = {
+      findByUserId: jest.fn().mockResolvedValue({
+        balance: '5000000000000000000',
+        currency: 'QUAI',
+      }),
+    };
     whatsappAuth = { initiate: jest.fn(), verify: jest.fn() };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -48,6 +56,7 @@ describe('WhatsappService', () => {
         { provide: ConfigService, useValue: configService },
         { provide: VoiceService, useValue: voiceService },
         { provide: FeesService, useValue: feesService },
+        { provide: WalletService, useValue: walletService },
         { provide: WhatsappAuthService, useValue: whatsappAuth },
       ],
     }).compile();
@@ -218,6 +227,54 @@ describe('WhatsappService', () => {
 
       expect(usersService.setTransactionPin).not.toHaveBeenCalled();
       expect(reply).toContain('4-digit');
+    });
+  });
+
+  describe('help message', () => {
+    it('lists the bot capabilities when asked for help', async () => {
+      const reply = await service.processIncomingMessage(
+        WHATSAPP_NUMBER,
+        'help',
+      );
+
+      expect(reply).toContain('Here is what I can do');
+      expect(reply).toContain('Send 10 QUAI to john@gmail.com');
+      expect(reply).toContain('set pin 1234');
+      expect(reply).toContain('balance');
+      expect(reply).toContain('Off-ramp');
+      expect(reply).toContain('Coming soon');
+    });
+
+    it('shows the help message when a command is not understood', async () => {
+      const reply = await service.processIncomingMessage(
+        WHATSAPP_NUMBER,
+        'hello',
+      );
+
+      expect(reply).toContain('Here is what I can do');
+    });
+  });
+
+  describe('balance', () => {
+    it('reports the current balance in major units', async () => {
+      const reply = await service.processIncomingMessage(
+        WHATSAPP_NUMBER,
+        'balance',
+      );
+
+      expect(walletService.findByUserId).toHaveBeenCalledWith(USER_ID);
+      expect(reply).toContain('5 QUAI');
+    });
+
+    it('handles a user without a wallet', async () => {
+      walletService.findByUserId.mockResolvedValue(null);
+
+      const reply = await service.processIncomingMessage(
+        WHATSAPP_NUMBER,
+        'my balance',
+      );
+
+      expect(reply).toContain('do not have a wallet');
     });
   });
 

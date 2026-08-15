@@ -11,9 +11,11 @@ import { ConfigService } from '@nestjs/config';
 import twilio from 'twilio';
 import { FeesService } from '../fees/fees.service';
 import { TransferStatus } from '../transfer/schemas/transfer.schema';
+import { fromMinorUnits } from '../transfer/units';
 import { TransferService } from '../transfer/transfer.service';
 import { UsersService } from '../users/users.service';
 import { VoiceService } from '../voice/voice.service';
+import { WalletService } from '../wallet/wallet.service';
 import { WhatsappAuthService } from './whatsapp-auth.service';
 
 export interface IncomingMedia {
@@ -51,6 +53,7 @@ export class WhatsappService {
     private readonly usersService: UsersService,
     private readonly voiceService: VoiceService,
     private readonly feesService: FeesService,
+    private readonly walletService: WalletService,
     private readonly whatsappAuth: WhatsappAuthService,
     @Inject(forwardRef(() => TransferService))
     private readonly transferService: TransferService,
@@ -112,9 +115,17 @@ export class WhatsappService {
       return 'Enter the new 4-digit Transaction PIN you want to use.';
     }
 
+    if (/^(help|menu|start)$/i.test(body.trim())) {
+      return this.buildHelpMessage();
+    }
+
+    if (/^(balance|my balance|check balance)$/i.test(body.trim())) {
+      return this.handleBalance(user._id.toString());
+    }
+
     const intent = this.parseTransferIntent(body);
     if (!intent) {
-      return 'Welcome to Wype! Reply with "Send 10 QUAI to john@gmail.com" to make a payment, or "set pin 1234" to create a Transaction PIN.';
+      return this.buildHelpMessage();
     }
 
     this.sessions.set(from, {
@@ -231,6 +242,44 @@ export class WhatsappService {
 
   private buildConfirmation(intent: SendIntent): string {
     return `Got it — send ${intent.amount} ${intent.currency} to ${intent.displayRecipient}? A fee of ${intent.fee} ${intent.currency} applies. Reply with your 4-digit Transaction PIN to confirm.`;
+  }
+
+  private async handleBalance(userId: string): Promise<string> {
+    try {
+      const wallet = await this.walletService.findByUserId(userId);
+      if (!wallet) {
+        return 'You do not have a wallet yet. Send money first or fund it from the app, then reply "balance" again.';
+      }
+      const balance = fromMinorUnits(wallet.balance);
+      return `Your current balance is ${balance} ${wallet.currency}. Reply "Send 10 QUAI to john@gmail.com" to make a payment.`;
+    } catch (error) {
+      this.logger.error('Balance lookup failed', error as Error);
+      return 'Something went wrong while checking your balance. Please try again later.';
+    }
+  }
+
+  private buildHelpMessage(): string {
+    return [
+      '👋 Welcome to Wype! Here is what I can do:',
+      '',
+      '💸 Send money',
+      '   Send 10 QUAI to john@gmail.com',
+      '   (recipient: email, phone number, or username like basil.quai)',
+      '',
+      '🎤 Send money by voice',
+      '   Record a voice note saying "send 10 QUAI to basil.quai"',
+      '',
+      '💰 View your balance',
+      '   Reply "balance"',
+      '',
+      '🔒 Set or change your Transaction PIN',
+      '   set pin 1234',
+      '',
+      '🔄 Off-ramp to fiat',
+      '   Coming soon — not available yet',
+      '',
+      'Reply with any command above to get started.',
+    ].join('\n');
   }
 
   private async handlePin(

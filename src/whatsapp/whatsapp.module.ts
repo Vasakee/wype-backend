@@ -4,6 +4,7 @@ import { FeesModule } from '../fees/fees.module';
 import { TransferModule } from '../transfer/transfer.module';
 import { UsersModule } from '../users/users.module';
 import { VoiceModule } from '../voice/voice.module';
+import { WalletModule } from '../wallet/wallet.module';
 import { WhatsappAuthService } from './whatsapp-auth.service';
 import { WhatsappController } from './whatsapp.controller';
 import { WhatsappService } from './whatsapp.service';
@@ -15,6 +16,7 @@ import { WhatsappService } from './whatsapp.service';
     UsersModule,
     VoiceModule,
     FeesModule,
+    WalletModule,
     AuthModule,
   ],
   controllers: [WhatsappController],
