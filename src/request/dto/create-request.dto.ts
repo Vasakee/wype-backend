@@ -5,11 +5,12 @@ import {
   IsOptional,
   IsString,
   Matches,
+  MaxLength,
 } from 'class-validator';
 
-export class CreateEmailTransferDto {
+export class CreateRequestDto {
   @ApiProperty({
-    description: 'Recipient email address',
+    description: 'Email of the person you are requesting money from',
     example: 'sam@example.com',
   })
   @IsEmail()
@@ -17,7 +18,7 @@ export class CreateEmailTransferDto {
 
   @ApiProperty({
     description: 'Amount in QUAI (major units)',
-    example: '25',
+    example: '10',
   })
   @Matches(/^\d+(\.\d+)?$/, {
     message: 'amount must be a positive number',
@@ -25,13 +26,15 @@ export class CreateEmailTransferDto {
   amount: string;
 
   @ApiProperty({
-    description: 'Sender 4-digit Transaction PIN',
-    example: '4829',
+    description: 'Optional note shown with the request',
+    example: 'Splitting the dinner bill',
+    required: false,
   })
-  @Matches(/^\d{4}$/, {
-    message: 'pin must be a 4-digit number',
-  })
-  pin: string;
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(200)
+  note?: string;
 
   @ApiProperty({
     description: 'Currency code (defaults to QUAI)',
@@ -42,15 +45,4 @@ export class CreateEmailTransferDto {
   @IsString()
   @IsNotEmpty()
   currency?: string;
-
-  @ApiProperty({
-    description:
-      'Payment request id this transfer settles (internal bookkeeping)',
-    example: '507f1f77bcf86cd799439011',
-    required: false,
-  })
-  @IsOptional()
-  @IsString()
-  @IsNotEmpty()
-  requestId?: string;
 }

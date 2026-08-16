@@ -55,39 +55,84 @@ export class EscrowService {
 
     const claimed: string[] = [];
     for (const escrow of escrows) {
-      const escrowKey = escrow.recipientEmail ?? escrow.recipientWhatsapp;
-      if (!escrowKey) continue;
-
-      const receipt = await this.blockchainService.claimEscrow(
-        this.blockchainService.hashEmail(escrowKey),
-      );
-
-      await this.walletService.credit(userId, escrow.amount);
-
-      await this.transferModel.create({
-        sender: escrow.sender,
-        recipient: user._id,
-        recipientEmail: escrow.recipientEmail,
-        recipientWhatsapp: escrow.recipientWhatsapp,
-        amount: escrow.amount,
-        currency: escrow.currency,
-        channel: escrow.channel,
-        type: TransferType.Claim,
-        status: TransferStatus.Completed,
-        escrowExpiry: escrow.escrowExpiry,
-        escrowId: escrow.escrowId,
-        txHash: receipt.txHash,
-      });
-
-      escrow.recipient = user._id;
-      escrow.status = TransferStatus.Completed;
-      escrow.claimedAt = new Date();
-      await escrow.save();
-
+      await this.claimOne(escrow, user._id.toString());
       claimed.push(escrow._id.toString());
     }
 
     return { claimed: claimed.length, transfers: claimed };
+  }
+
+  /**
+   * Claims a single escrow by its claim token (the token embedded in the
+   * invite link emailed to the recipient). Returns the credited amount in
+   * minor units, or undefined when the token does not resolve to a claimable
+   * escrow for this user.
+   */
+  async claimByToken(
+    userId: string,
+    claimToken: string,
+  ): Promise<string | undefined> {
+    const user = await this.usersService.findById(userId);
+    if (!user?.isEmailVerified) {
+      throw new NotFoundException('Account not found');
+    }
+
+    await this.reverseExpiredEscrows();
+
+    const escrow = await this.transferModel
+      .findOne({
+        status: TransferStatus.Escrowed,
+        claimToken,
+        escrowExpiry: { $gt: new Date() },
+      })
+      .exec();
+
+    if (!escrow) return undefined;
+
+    const keyMatches =
+      (escrow.recipientEmail &&
+        escrow.recipientEmail.toLowerCase() === user.email?.toLowerCase()) ||
+      (escrow.recipientWhatsapp &&
+        escrow.recipientWhatsapp === user.phoneNumber);
+    if (!keyMatches) return undefined;
+
+    return this.claimOne(escrow, userId);
+  }
+
+  private async claimOne(
+    escrow: TransferDocument,
+    userId: string,
+  ): Promise<string> {
+    const escrowKey = escrow.recipientEmail ?? escrow.recipientWhatsapp;
+    if (!escrowKey) return '0';
+
+    const receipt = await this.blockchainService.claimEscrow(
+      this.blockchainService.hashEmail(escrowKey),
+    );
+
+    await this.walletService.credit(userId, escrow.amount);
+
+    await this.transferModel.create({
+      sender: escrow.sender,
+      recipient: userId,
+      recipientEmail: escrow.recipientEmail,
+      recipientWhatsapp: escrow.recipientWhatsapp,
+      amount: escrow.amount,
+      currency: escrow.currency,
+      channel: escrow.channel,
+      type: TransferType.Claim,
+      status: TransferStatus.Completed,
+      escrowExpiry: escrow.escrowExpiry,
+      escrowId: escrow.escrowId,
+      txHash: receipt.txHash,
+    });
+
+    escrow.recipient = userId as never;
+    escrow.status = TransferStatus.Completed;
+    escrow.claimedAt = new Date();
+    await escrow.save();
+
+    return escrow.amount;
   }
 
   /**

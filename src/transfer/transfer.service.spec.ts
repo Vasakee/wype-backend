@@ -1,10 +1,13 @@
 import { UnauthorizedException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { getModelToken } from '@nestjs/mongoose';
 import { Test, TestingModule } from '@nestjs/testing';
 import * as bcrypt from 'bcrypt';
+import { AuthService } from '../auth/auth.service';
 import { BlockchainService } from '../blockchain/blockchain.service';
 import { EmailService } from '../email/email.service';
 import { EscrowService } from '../escrow/escrow.service';
+import { FeesService } from '../fees/fees.service';
 import { UsersService } from '../users/users.service';
 import { WalletService } from '../wallet/wallet.service';
 import {
@@ -35,10 +38,14 @@ describe('TransferService', () => {
     hashEmail: jest.Mock;
     directTransfer: jest.Mock;
     depositToEscrow: jest.Mock;
+    reverseEscrow: jest.Mock;
   };
-  let escrowService: { reverseExpiredEscrows: jest.Mock };
+  let escrowService: { reverseExpiredEscrows: jest.Mock; claim: jest.Mock };
   let emailService: { send: jest.Mock };
   let whatsappService: { sendMessage: jest.Mock };
+  let feesService: { calculate: jest.Mock };
+  let authService: { issueClaimLink: jest.Mock };
+  let configService: { get: jest.Mock };
 
   const pinHash = bcrypt.hashSync('1234', 4);
   const sender = {
@@ -73,12 +80,19 @@ describe('TransferService', () => {
       depositToEscrow: jest
         .fn()
         .mockResolvedValue({ txHash: '0xescrow', escrowId: 'hash-bob' }),
+      reverseEscrow: jest.fn().mockResolvedValue({ txHash: '0xreverse' }),
     };
     escrowService = {
       reverseExpiredEscrows: jest.fn().mockResolvedValue(0),
+      claim: jest.fn(),
     };
     emailService = { send: jest.fn() };
     whatsappService = { sendMessage: jest.fn().mockResolvedValue(undefined) };
+    feesService = { calculate: jest.fn().mockReturnValue('0.025') };
+    authService = { issueClaimLink: jest.fn().mockResolvedValue({ ok: true }) };
+    configService = {
+      get: jest.fn().mockReturnValue('http://localhost:3000'),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -90,6 +104,9 @@ describe('TransferService', () => {
         { provide: EscrowService, useValue: escrowService },
         { provide: EmailService, useValue: emailService },
         { provide: 'WHATSAPP_SERVICE', useValue: whatsappService },
+        { provide: FeesService, useValue: feesService },
+        { provide: AuthService, useValue: authService },
+        { provide: ConfigService, useValue: configService },
       ],
     }).compile();
 

@@ -75,6 +75,15 @@ export class Transfer {
 
   @Prop()
   claimedAt?: Date;
+
+  @Prop()
+  cancelledAt?: Date;
+
+  @Prop({ unique: true, sparse: true, index: true })
+  claimToken?: string;
+
+  @Prop()
+  requestId?: string;
 }
 
 export type TransferDocument = HydratedDocument<Transfer>;

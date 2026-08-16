@@ -155,6 +155,12 @@ export class UsersService {
       .exec();
   }
 
+  async unlinkPhoneNumber(userId: string): Promise<UserDocument | null> {
+    return this.userModel
+      .findByIdAndUpdate(userId, { $unset: { phoneNumber: '' } }, { new: true })
+      .exec();
+  }
+
   async claimUsername(userId: string, username: string): Promise<UserDocument> {
     const normalized = username.trim().toLowerCase();
     if (!USERNAME_PATTERN.test(normalized)) {

@@ -1,6 +1,8 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
+import { AuthModule } from '../auth/auth.module';
 import { EscrowModule } from '../escrow/escrow.module';
+import { FeesModule } from '../fees/fees.module';
 import { UsersModule } from '../users/users.module';
 import { WalletModule } from '../wallet/wallet.module';
 import { WhatsappModule } from '../whatsapp/whatsapp.module';
@@ -18,6 +20,8 @@ import { TransferService } from './transfer.service';
     UsersModule,
     WalletModule,
     EscrowModule,
+    FeesModule,
+    AuthModule,
   ],
   controllers: [TransferController],
   providers: [

@@ -6,6 +6,7 @@ import {
   HttpCode,
   HttpStatus,
   Post,
+  Put,
   Query,
   Req,
   UseGuards,
@@ -14,6 +15,7 @@ import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { UpdatePinDto } from './dto/update-pin.dto';
+import { ChangePinDto } from './dto/change-pin.dto';
 import type { AuthenticatedRequest } from './interfaces/authenticated-request.interface';
 import { JwtAuthGuard } from './jwt-auth.guard';
 
@@ -55,5 +57,15 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   setPin(@Req() req: AuthenticatedRequest, @Body() dto: UpdatePinDto) {
     return this.authService.setPin(req.user.sub, dto.pin);
+  }
+
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Change the 4-digit Transaction PIN (requires the current PIN)',
+  })
+  @Put('pin')
+  @UseGuards(JwtAuthGuard)
+  changePin(@Req() req: AuthenticatedRequest, @Body() dto: ChangePinDto) {
+    return this.authService.changePin(req.user.sub, dto.currentPin, dto.newPin);
   }
 }

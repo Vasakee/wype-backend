@@ -10,6 +10,7 @@ import { EmailModule } from './email/email.module';
 import { EscrowModule } from './escrow/escrow.module';
 import { FeesModule } from './fees/fees.module';
 import { MovementModule } from './movement/movement.module';
+import { RequestModule } from './request/request.module';
 import { TransferModule } from './transfer/transfer.module';
 import { UsersModule } from './users/users.module';
 import { VoiceModule } from './voice/voice.module';
@@ -40,6 +41,7 @@ import { WhatsappModule } from './whatsapp/whatsapp.module';
     FeesModule,
     MovementModule,
     BlipModule,
+    RequestModule,
   ],
   controllers: [AppController],
   providers: [AppService],

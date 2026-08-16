@@ -7,6 +7,7 @@ export interface PendingRegistration {
   fullName?: string;
   phoneNumber?: string;
   passwordHash?: string;
+  claimToken?: string;
   expiresAt: number;
 }
 

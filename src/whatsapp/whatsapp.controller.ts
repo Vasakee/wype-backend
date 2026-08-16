@@ -2,16 +2,21 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   Body,
   Controller,
+  Delete,
   Header,
   HttpCode,
   HttpStatus,
   Post,
+  Req,
   UseGuards,
 } from '@nestjs/common';
 import twilio from 'twilio';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import type { AuthenticatedRequest } from '../auth/interfaces/authenticated-request.interface';
 import { IncomingMessageDto } from './dto/incoming-message.dto';
+import { LinkWhatsappDto } from './dto/link-whatsapp.dto';
 import { SendMessageDto } from './dto/send-message.dto';
+import { VerifyWhatsappDto } from './dto/verify-whatsapp.dto';
 import { WhatsappService } from './whatsapp.service';
 
 @ApiTags('whatsapp')
@@ -51,5 +56,31 @@ export class WhatsappController {
   @UseGuards(JwtAuthGuard)
   send(@Body() dto: SendMessageDto) {
     return this.whatsappService.sendMessage(dto.to, dto.body);
+  }
+
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Link a WhatsApp number — sends a 6-digit code to that number',
+  })
+  @Post('link')
+  @UseGuards(JwtAuthGuard)
+  link(@Req() req: AuthenticatedRequest, @Body() dto: LinkWhatsappDto) {
+    return this.whatsappService.linkStart(req.user.sub, dto.phone);
+  }
+
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Verify the code to finish linking the number' })
+  @Post('verify')
+  @UseGuards(JwtAuthGuard)
+  verify(@Req() req: AuthenticatedRequest, @Body() dto: VerifyWhatsappDto) {
+    return this.whatsappService.linkVerify(req.user.sub, dto.phone, dto.code);
+  }
+
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Unlink the WhatsApp number from the account' })
+  @Delete('link')
+  @UseGuards(JwtAuthGuard)
+  unlink(@Req() req: AuthenticatedRequest) {
+    return this.whatsappService.unlink(req.user.sub);
   }
 }

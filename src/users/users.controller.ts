@@ -6,6 +6,7 @@ import {
   HttpCode,
   HttpStatus,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -25,6 +26,26 @@ export class UsersController {
   @Get('me')
   getProfile(@Req() req: AuthenticatedRequest) {
     return this.usersService.findById(req.user.sub);
+  }
+
+  @ApiOperation({
+    summary:
+      'Check whether an email belongs to a registered Wype account (recipient resolution)',
+  })
+  @Get('lookup')
+  async lookup(@Query('email') email?: string) {
+    if (!email || !/^\S+@\S+\.\S+$/.test(email)) {
+      return { registered: false };
+    }
+    const user = await this.usersService.findByEmail(email);
+    if (!user) {
+      return { registered: false };
+    }
+    return {
+      registered: true,
+      displayName: user.fullName ?? user.email.split('@')[0],
+      username: user.username,
+    };
   }
 
   @ApiOperation({

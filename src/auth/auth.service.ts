@@ -8,6 +8,7 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { BlockchainService } from '../blockchain/blockchain.service';
+import { EscrowService } from '../escrow/escrow.service';
 import type { UserDocument } from '../users/schemas/user.schema';
 import { UsersService } from '../users/users.service';
 import { WalletService } from '../wallet/wallet.service';
@@ -28,6 +29,7 @@ export class AuthService {
     private readonly magicLinkService: MagicLinkService,
     private readonly blockchainService: BlockchainService,
     private readonly jwtService: JwtService,
+    private readonly escrowService: EscrowService,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -66,12 +68,71 @@ export class AuthService {
       throw new BadRequestException('Magic link is invalid or has expired');
     }
 
-    return this.createVerifiedUser({
+    const existing = await this.usersService.findByEmail(pending.email);
+
+    // A verified account receiving a claim link should be signed in and the
+    // escrow credited — not blocked by a "account already exists" error.
+    if (existing?.isEmailVerified) {
+      const claimedAmount = pending.claimToken
+        ? await this.claimByToken(existing._id.toString(), pending.claimToken)
+        : undefined;
+
+      const authResponse = await this.buildAuthResponse(existing);
+      return {
+        ...authResponse,
+        isNewUser: false,
+        claimedAmount,
+      };
+    }
+
+    const created = await this.createVerifiedUser({
       email: pending.email,
       fullName: pending.fullName,
       phoneNumber: pending.phoneNumber,
       passwordHash: pending.passwordHash,
     });
+
+    const claimedAmount = pending.claimToken
+      ? await this.claimByToken(created.user.id, pending.claimToken)
+      : undefined;
+
+    return { ...created, isNewUser: true, claimedAmount };
+  }
+
+  /**
+   * Issues a magic link that is bound to an escrow claim token. Used by the
+   * public claim page: the recipient verifies their email and the escrow is
+   * credited on the way in.
+   */
+  issueClaimLink(email: string, claimToken: string) {
+    const normalized = email.trim().toLowerCase();
+    const { token, link } = this.magicLinkService.issue({
+      email: normalized,
+      claimToken,
+    });
+    this.magicLinkService.sendMagicLink(normalized, link);
+
+    return {
+      message: 'Magic link sent to your email.',
+      ...(process.env.NODE_ENV === 'production'
+        ? {}
+        : { magicLink: link, token }),
+    };
+  }
+
+  private async claimByToken(
+    userId: string,
+    claimToken: string,
+  ): Promise<string | undefined> {
+    try {
+      return await this.escrowService.claimByToken(userId, claimToken);
+    } catch (error) {
+      this.logger.warn(
+        `Failed to claim escrow by token for ${userId}`,
+        error as Error,
+      );
+      return undefined;
+    }
   }
 
   /**
@@ -133,6 +194,21 @@ export class AuthService {
 
   async setPin(userId: string, pin: string) {
     await this.usersService.setTransactionPin(userId, pin);
+    return { message: 'Transaction PIN updated' };
+  }
+
+  async changePin(userId: string, currentPin: string, newPin: string) {
+    const user = await this.usersService.findByIdWithPin(userId);
+    if (!user || !user.isEmailVerified) {
+      throw new UnauthorizedException('Unauthorized');
+    }
+    if (
+      !user.transactionPin ||
+      !(await bcrypt.compare(currentPin, user.transactionPin))
+    ) {
+      throw new UnauthorizedException('Current PIN is incorrect');
+    }
+    await this.usersService.setTransactionPin(userId, newPin);
     return { message: 'Transaction PIN updated' };
   }
 

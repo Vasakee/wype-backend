@@ -88,4 +88,10 @@ export class MovementService {
       txHash: receipt.txHash,
     };
   }
+
+  findById(userId: string, movementId: string) {
+    return this.movementModel
+      .findOne({ _id: movementId, userId: new Types.ObjectId(userId) })
+      .exec();
+  }
 }

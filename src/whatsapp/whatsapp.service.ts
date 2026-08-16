@@ -39,7 +39,14 @@ type WhatsappSession =
   | { state: 'awaiting-email'; createdAt: number }
   | { state: 'awaiting-verification'; email: string; createdAt: number };
 
+interface PhoneLinkChallenge {
+  phone: string;
+  code: string;
+  expiresAt: number;
+}
+
 const SESSION_TTL_MS = 10 * 60 * 1000;
+const LINK_CODE_TTL_MS = 10 * 60 * 1000;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 @Injectable()
@@ -47,6 +54,7 @@ export class WhatsappService {
   private readonly logger = new Logger(WhatsappService.name);
   private client: twilio.Twilio | null = null;
   private readonly sessions = new Map<string, WhatsappSession>();
+  private readonly linkChallenges = new Map<string, PhoneLinkChallenge>();
 
   constructor(
     private readonly configService: ConfigService,
@@ -73,6 +81,62 @@ export class WhatsappService {
 
     this.logger.log(`WhatsApp message sent to ${to}: ${message.sid}`);
     return message;
+  }
+
+  /**
+   * Web flow for linking a WhatsApp number: mails a 6-digit code to the number
+   * via the bot, which the user then echoes back in the app to verify.
+   */
+  async linkStart(userId: string, rawPhone: string) {
+    const phone = rawPhone.replace(/[\s()-]/g, '');
+    if (!/^\+[1-9]\d{6,14}$/.test(phone)) {
+      throw new BadRequestException(
+        'Enter a valid phone number in international format, e.g. +14155552671',
+      );
+    }
+
+    const code = String(Math.floor(100000 + Math.random() * 900000));
+    this.linkChallenges.set(userId, {
+      phone,
+      code,
+      expiresAt: Date.now() + LINK_CODE_TTL_MS,
+    });
+
+    this.logger.log(
+      `[mock-whatsapp] Link code for ${phone}: ${code} (user ${userId})`,
+    );
+
+    await this.sendMessage(
+      phone,
+      `Your Wype verification code is ${code}. Reply with it in the Wype app to link this number.`,
+    ).catch(() => undefined);
+
+    return { ok: true, cooldownSeconds: 30 };
+  }
+
+  async linkVerify(userId: string, rawPhone: string, code: string) {
+    const phone = rawPhone.replace(/[\s()-]/g, '');
+    const challenge = this.linkChallenges.get(userId);
+
+    if (!challenge || challenge.phone !== phone || challenge.code !== code) {
+      throw new UnauthorizedException('That code is incorrect');
+    }
+    if (challenge.expiresAt < Date.now()) {
+      this.linkChallenges.delete(userId);
+      throw new BadRequestException(
+        'That code has expired. Request a new one.',
+      );
+    }
+
+    this.linkChallenges.delete(userId);
+    await this.usersService.linkPhoneNumber(userId, challenge.phone);
+
+    return { ok: true, linkedPhone: challenge.phone };
+  }
+
+  async unlink(userId: string) {
+    await this.usersService.unlinkPhoneNumber(userId);
+    return { ok: true };
   }
 
   async processIncomingMessage(
