@@ -194,6 +194,15 @@ export class UsersService {
     }
   }
 
+  async setLang(userId: string, lang: string): Promise<UserDocument | null> {
+    if (lang !== 'en' && lang !== 'pcm') {
+      throw new BadRequestException('Language must be "en" or "pcm"');
+    }
+    return this.userModel
+      .findByIdAndUpdate(userId, { lang }, { new: true })
+      .exec();
+  }
+
   async create(params: CreateUserParams): Promise<UserDocument> {
     const user = new this.userModel({
       ...params,

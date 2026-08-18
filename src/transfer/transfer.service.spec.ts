@@ -40,7 +40,7 @@ describe('TransferService', () => {
     chainNow: jest.Mock;
     directTransfer: jest.Mock;
     depositToEscrow: jest.Mock;
-    reverseEscrow: jest.Mock;
+    cancelEscrow: jest.Mock;
   };
   let escrowService: { reverseExpiredEscrows: jest.Mock; claim: jest.Mock };
   let emailService: { send: jest.Mock };
@@ -84,7 +84,7 @@ describe('TransferService', () => {
       depositToEscrow: jest
         .fn()
         .mockResolvedValue({ txHash: '0xescrow', escrowId: 'hash-bob' }),
-      reverseEscrow: jest.fn().mockResolvedValue({ txHash: '0xreverse' }),
+      cancelEscrow: jest.fn().mockResolvedValue({ txHash: '0xreverse' }),
     };
     escrowService = {
       reverseExpiredEscrows: jest.fn().mockResolvedValue(0),
@@ -164,9 +164,13 @@ describe('TransferService', () => {
         pin: '1234',
       });
 
-      // Keyed by the salted commitment, never by a bare hash of the recipient.
+      // commitmentFor receives the SHA-256 hash of the email, not the raw email.
+      expect(blockchainService.commitmentFor).toHaveBeenCalledWith(
+        'hash-bob@example.com',
+        expect.any(String),
+      );
       expect(blockchainService.depositToEscrow).toHaveBeenCalledWith(
-        'commitment-bob@example.com',
+        'commitment-hash-bob@example.com',
         expect.any(String),
         expect.any(Number),
       );

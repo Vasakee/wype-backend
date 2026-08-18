@@ -39,11 +39,6 @@ export class WalletService {
     const wallet = new this.walletModel({ userId, address });
     const saved = await wallet.save();
 
-    const user = await this.usersService.findById(userId);
-    if (user?.email) {
-      this.blockchainService.registerAddress(user.email, saved.address);
-    }
-
     await this.usersService.setWallet(userId, saved.address);
 
     return saved;

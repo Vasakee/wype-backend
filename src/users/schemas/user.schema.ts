@@ -48,6 +48,9 @@ export class User {
 
   @Prop({ default: false })
   isEmailVerified: boolean;
+
+  @Prop({ default: 'en', enum: ['en', 'pcm'] })
+  lang: string;
 }
 
 export type UserDocument = HydratedDocument<User>;

@@ -38,3 +38,9 @@ pnpm-debug.log*
 
 # Misc
 *.tgz
+
+# Hardhat
+/cache
+/artifacts
+contracts/node_modules/
+contracts/out/

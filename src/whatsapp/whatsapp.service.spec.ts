@@ -1,6 +1,8 @@
 import { UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
+import { BlipService } from '../blip/blip.service';
+import { BlockchainService } from '../blockchain/blockchain.service';
 import { FeesService } from '../fees/fees.service';
 import { TransferService } from '../transfer/transfer.service';
 import { UsersService } from '../users/users.service';
@@ -58,6 +60,8 @@ describe('WhatsappService', () => {
         { provide: FeesService, useValue: feesService },
         { provide: WalletService, useValue: walletService },
         { provide: WhatsappAuthService, useValue: whatsappAuth },
+        { provide: BlockchainService, useValue: {} },
+        { provide: BlipService, useValue: {} },
       ],
     }).compile();
 
@@ -241,8 +245,6 @@ describe('WhatsappService', () => {
       expect(reply).toContain('Send 10 QUAI to john@gmail.com');
       expect(reply).toContain('set pin 1234');
       expect(reply).toContain('balance');
-      expect(reply).toContain('Off-ramp');
-      expect(reply).toContain('Coming soon');
     });
 
     it('shows the help message when a command is not understood', async () => {
@@ -251,7 +253,8 @@ describe('WhatsappService', () => {
         'hello',
       );
 
-      expect(reply).toContain('Here is what I can do');
+      expect(reply).toContain('did not understand');
+      expect(reply).toContain('help');
     });
   });
 

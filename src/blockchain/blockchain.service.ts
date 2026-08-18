@@ -1,9 +1,19 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { createHash, randomBytes } from 'node:crypto';
-import * as quais from 'quais';
+import { createCipheriv, createHash, randomBytes } from 'node:crypto';
+import {
+  quais,
+  QuaiHDWallet,
+  Mnemonic,
+  Zone,
+  Contract,
+  Wallet,
+} from 'quais';
 import { WYPE_ESCROW_ABI } from './wype-escrow.abi';
 
+// ---------------------------------------------------------------------------
+// Types — every consumer depends on these shapes
+// ---------------------------------------------------------------------------
 export interface BlockchainReceipt {
   txHash: string;
 }
@@ -17,84 +27,101 @@ export interface GeneratedWallet {
   encryptedPrivateKey: string;
 }
 
-/** Cyprus-1 is Quai zone 0x00. Addresses outside it are rejected by the zone. */
-const CYPRUS_1 = quais.Zone.Cyprus1;
-
-/**
- * The on-chain layer (Quai Network, Cyprus-1).
- *
- * Talks to WypeEscrow.sol when the chain is configured, and falls back to the
- * original in-memory simulation when it is not, so tests and local development
- * run without an RPC endpoint or a funded key. `isLive()` reports which mode is
- * active.
- *
- * Configuration (all required for live mode):
- *   QUAI_RPC_URL                bare host, e.g. https://orchard.rpc.quai.network
- *   WYPE_ESCROW_ADDRESS         deployed WypeEscrow
- *   WYPE_TREASURY_PRIVATE_KEY   funded key that locks and settles escrows
- *   ESCROW_VERIFIER_PK          key that signs claim authorisations
- */
+// ---------------------------------------------------------------------------
+// Service
+// ---------------------------------------------------------------------------
 @Injectable()
-export class BlockchainService implements OnModuleInit {
+export class BlockchainService {
   private readonly logger = new Logger(BlockchainService.name);
-  private readonly registry = new Map<string, string>();
 
-  private readonly rpcUrl: string;
+  private readonly provider: quais.JsonRpcProvider;
+  private readonly hotWallet: QuaiHDWallet | null = null;
+  private readonly hotWalletAddress: string = '';
+  private readonly hasMnemonic: boolean;
+
   private readonly escrowAddress: string;
-  private readonly treasuryKey: string;
-  private readonly verifierKey: string;
-
-  private provider?: quais.JsonRpcProvider;
-  private treasury?: quais.Wallet;
-  private verifier?: quais.Wallet;
-  private escrow?: quais.Contract;
+  private readonly escrowContract: Contract | null = null;
+  private readonly verifierWallet: Wallet | null = null;
 
   constructor(configService: ConfigService) {
-    // quais appends the zone path itself, so it wants the bare host. A trailing
-    // /cyprus1 (correct for curl and forge) would be doubled up and rejected.
-    this.rpcUrl = (configService.get<string>('QUAI_RPC_URL') ?? '')
-      .replace(/\/+$/, '')
-      .replace(/\/(cyprus|paxos|hydra)\d$/i, '');
-    this.escrowAddress = configService.get<string>('WYPE_ESCROW_ADDRESS') ?? '';
-    this.treasuryKey =
-      configService.get<string>('WYPE_TREASURY_PRIVATE_KEY') ?? '';
-    this.verifierKey = configService.get<string>('ESCROW_VERIFIER_PK') ?? '';
-  }
+    const rpcUrl =
+      configService.get<string>('QUAI_RPC_URL') ?? 'https://rpc.quai.network';
+    const mnemonic = configService.get<string>('WYPE_TREASURY_PRIVATE_KEY');
+    const verifierPk = configService.get<string>('ESCROW_VERIFIER_PK');
 
-  onModuleInit(): void {
-    if (!this.isLive()) {
-      this.logger.warn(
-        'Quai is not fully configured — using the in-memory simulation. ' +
-          'Set QUAI_RPC_URL, WYPE_ESCROW_ADDRESS, WYPE_TREASURY_PRIVATE_KEY and ' +
-          'ESCROW_VERIFIER_PK to settle on-chain.',
-      );
-      return;
-    }
+    this.escrowAddress =
+      configService.get<string>('WYPE_ESCROW_ADDRESS') ?? '';
 
-    this.provider = new quais.JsonRpcProvider(this.rpcUrl, undefined, {
+    // Provider — always initialised so reads work without keys
+    this.provider = new quais.JsonRpcProvider(rpcUrl, undefined, {
       usePathing: true,
     });
-    this.treasury = new quais.Wallet(this.treasuryKey, this.provider);
-    this.verifier = new quais.Wallet(this.verifierKey, this.provider);
-    this.escrow = new quais.Contract(
-      this.escrowAddress,
-      WYPE_ESCROW_ABI,
-      this.treasury,
-    );
 
-    this.logger.log(
-      `Quai live: escrow=${this.escrowAddress} treasury=${this.treasury.address}`,
-    );
+    // Hot wallet (treasury key)
+    if (mnemonic && mnemonic !== '0x...') {
+      // Support both a raw private key and a mnemonic phrase
+      if (mnemonic.includes(' ')) {
+        const phrase = Mnemonic.fromPhrase(mnemonic);
+        const hd = QuaiHDWallet.fromMnemonic(phrase);
+        hd.connect(this.provider);
+        this.hotWallet = hd;
+      } else {
+        // Raw private key — wrap in a Wallet that has sendTransaction
+        const w = new Wallet(mnemonic, this.provider);
+        // We store the address and use a thin shim; see getSigner()
+        this.hotWalletAddress = w.address;
+        this.hasMnemonic = true;
+        // Assign to hotWallet via a signer-compatible wrapper
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (this as any).hotWallet = w;
+      }
+      if (!this.hotWalletAddress) {
+        const addrInfo = (
+          this.hotWallet as QuaiHDWallet
+        ).getNextAddressSync(0, Zone.Cyprus1);
+        this.hotWalletAddress = addrInfo.address;
+      }
+      this.hasMnemonic = true;
+      this.logger.log(`Hot wallet loaded: ${this.hotWalletAddress}`);
+    } else {
+      this.hasMnemonic = false;
+      this.logger.warn(
+        'WYPE_TREASURY_PRIVATE_KEY is not set. On-chain writes will fail.',
+      );
+    }
+
+    // Verifier wallet (signs claim authorisations)
+    if (verifierPk && verifierPk !== '0x...') {
+      this.verifierWallet = new Wallet(verifierPk, this.provider);
+      this.logger.log(`Verifier loaded: ${this.verifierWallet.address}`);
+    } else {
+      this.logger.warn(
+        'ESCROW_VERIFIER_PK is not set. Claim signing will fail.',
+      );
+    }
+
+    // Escrow contract
+    if (this.escrowAddress) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const signer = this.getSigner() as any;
+      this.escrowContract = new quais.Contract(
+        this.escrowAddress,
+        WYPE_ESCROW_ABI,
+        signer,
+      );
+    }
   }
 
-  /** True when every piece needed to settle on-chain is configured. */
-  isLive(): boolean {
-    return Boolean(
-      this.rpcUrl && this.escrowAddress && this.treasuryKey && this.verifierKey,
-    );
+  // -----------------------------------------------------------------------
+  // Helpers
+  // -----------------------------------------------------------------------
+
+  /** Get a signer-compatible object for contract interactions. */
+  private getSigner(): QuaiHDWallet | Wallet {
+    return (this.hotWallet as QuaiHDWallet | Wallet) ?? null;
   }
 
-  /** Stable hash of an email or phone number. Never used alone as an escrow key. */
+  /** SHA-256 of a lowercased, trimmed email / phone identifier. */
   hashEmail(email: string): string {
     return createHash('sha256')
       .update(email.trim().toLowerCase())
@@ -102,143 +129,198 @@ export class BlockchainService implements OnModuleInit {
   }
 
   /**
-   * The opaque handle an escrow is stored under on-chain.
-   *
-   * Keying on the identity hash alone would publish who is owed money — anyone
-   * can hash an email address and read the balance back. Mixing in a per-transfer
-   * random salt (the claim token) makes the key meaningless to an observer while
-   * staying reproducible for whoever holds the claim link.
+   * Derive the on-chain commitment from an identity hash and a random salt.
+   * Matches the contract's keccak256(abi.encodePacked(identityHash, salt)).
    */
-  commitmentFor(escrowKey: string, salt: string): string {
-    return quais.keccak256(
-      quais.AbiCoder.defaultAbiCoder().encode(
-        ['bytes32', 'bytes32'],
-        [`0x${this.hashEmail(escrowKey)}`, quais.id(salt)],
-      ),
-    );
+  commitmentFor(identityHash: string, salt: string): string {
+    // identityHash and salt are hex strings; pack them as raw bytes
+    const identityBytes = quais.getBytes('0x' + identityHash);
+    const saltBytes = quais.getBytes('0x' + salt);
+    const packed = new Uint8Array(identityBytes.length + saltBytes.length);
+    packed.set(identityBytes, 0);
+    packed.set(saltBytes, identityBytes.length);
+    return quais.keccak256(packed);
   }
 
-  registerAddress(email: string, address: string): void {
-    this.registry.set(this.hashEmail(email), address);
-  }
-
-  resolveEmail(emailHash: string): string | null {
-    return this.registry.get(emailHash) ?? null;
-  }
-
-  /** Seconds as the EVM sees them. See the README for why getBlock() is wrong. */
+  /**
+   * Read the chain's current block timestamp via the raw RPC, NOT via
+   * provider.getBlock() which returns a Quai work-object timestamp that
+   * can be hours ahead of the EVM's block.timestamp.
+   */
   async chainNow(): Promise<number> {
-    if (!this.provider) return Math.floor(Date.now() / 1000);
-    const block = (await this.provider.send(
+    const block = await this.provider.send(
       'eth_getBlockByNumber',
       ['latest', false],
       quais.Shard.Cyprus1,
-    )) as { timestamp: string };
-    return Number(BigInt(block.timestamp));
+    );
+    const seconds = Number(BigInt(block.timestamp));
+    if (!Number.isFinite(seconds)) {
+      throw new Error(
+        `Could not read a block timestamp (got ${block?.timestamp})`,
+      );
+    }
+    return seconds;
   }
+
+  private ensureConfigured(): void {
+    if (!this.hasMnemonic) {
+      throw new Error(
+        'WYPE_TREASURY_PRIVATE_KEY is not configured. ' +
+          'Generate a key with: node contracts/script/quai-keygen.mjs',
+      );
+    }
+  }
+
+  private ensureEscrow(): void {
+    if (!this.escrowContract) {
+      throw new Error(
+        'WYPE_ESCROW_ADDRESS must be set. ' +
+          'Deploy the contract first, then add the address to .env.',
+      );
+    }
+  }
+
+  private ensureVerifier(): void {
+    if (!this.verifierWallet) {
+      throw new Error(
+        'ESCROW_VERIFIER_PK is not configured. ' +
+          'Generate a verifier key with: node contracts/script/quai-keygen.mjs',
+      );
+    }
+  }
+
+  // -----------------------------------------------------------------------
+  // Direct transfer
+  // -----------------------------------------------------------------------
 
   async directTransfer(
     toAddress: string,
     amount: string,
   ): Promise<BlockchainReceipt> {
-    if (!this.treasury) {
-      return { txHash: this.mockHash('direct', amount) };
-    }
-
-    const tx = await this.treasury.sendTransaction({
-      from: this.treasury.address,
+    this.ensureConfigured();
+    const signer = this.getSigner();
+    const tx = await (
+      signer as Wallet | QuaiHDWallet
+    ).sendTransaction({
+      from: this.hotWalletAddress,
       to: toAddress,
       value: BigInt(amount),
     });
+    this.logger.log(`Direct transfer tx: ${tx.hash}`);
     await tx.wait();
     return { txHash: tx.hash };
   }
 
-  /**
-   * Locks funds against `commitment` until `expiry`.
-   * @param commitment from {@link commitmentFor}
-   * @param amount in QUAI wei
-   */
+  // -----------------------------------------------------------------------
+  // Escrow — deposit
+  // -----------------------------------------------------------------------
+
   async depositToEscrow(
     commitment: string,
     amount: string,
-    expirySeconds?: number,
+    expirySeconds: number,
   ): Promise<EscrowReceipt> {
-    if (!this.escrow) {
-      return { txHash: this.mockHash('escrow', amount), escrowId: commitment };
-    }
-
-    const expiry = expirySeconds ?? (await this.chainNow()) + 7 * 24 * 60 * 60;
-    const tx = await this.escrow.deposit(commitment, expiry, {
-      value: BigInt(amount),
-    });
+    this.ensureEscrow();
+    const tx = await this.escrowContract!.deposit(
+      commitment,
+      Math.floor(expirySeconds),
+      { value: BigInt(amount) },
+    );
+    this.logger.log(`Escrow deposit tx: ${tx.hash}`);
     await tx.wait();
     return { txHash: tx.hash, escrowId: commitment };
   }
 
-  /**
-   * Releases an escrow to `toAddress`, authorised by the verifier key.
-   *
-   * The signature binds the payout to one recipient and a short deadline, so it
-   * cannot be redirected or replayed once the backend has issued it.
-   */
+  // -----------------------------------------------------------------------
+  // Escrow — claim (requires verifier signature)
+  // -----------------------------------------------------------------------
+
   async claimEscrow(
     commitment: string,
-    toAddress?: string,
+    toAddress: string,
   ): Promise<BlockchainReceipt> {
-    if (!this.escrow || !this.verifier || !this.treasury) {
-      return { txHash: this.mockHash('claim', commitment.slice(0, 10)) };
-    }
+    this.ensureEscrow();
+    this.ensureVerifier();
 
-    // Defaults to Wype's treasury: the custodial ledger stays the record of who
-    // owns what, and the user moves it out later via moveToSelfCustody. Paying
-    // the user's own address here instead would double-count against it.
-    const recipient = toAddress ?? this.treasury.address;
-
-    const deadline = (await this.chainNow()) + 3600;
-    // Ask the contract for the digest so the encoding cannot drift out of sync.
-    const digest = (await this.escrow.claimDigest(
+    const deadline = (await this.chainNow()) + 3600; // 1-hour signature window
+    const digest: string = await this.escrowContract!.claimDigest(
       commitment,
-      recipient,
+      toAddress,
       deadline,
-    )) as string;
-    const signature = await this.verifier.signMessage(quais.getBytes(digest));
+    );
+    const signature = await this.verifierWallet!.signMessage(
+      quais.getBytes(digest),
+    );
 
-    const tx = await this.escrow.claim(
+    const tx = await this.escrowContract!.claim(
       commitment,
-      recipient,
+      toAddress,
       deadline,
       signature,
     );
+    this.logger.log(`Escrow claim tx: ${tx.hash}`);
+    await tx.wait();
+    return { txHash: tx.hash };
+  }
+
+  // -----------------------------------------------------------------------
+  // Escrow — cancel (depositor only, pre-expiry)
+  // -----------------------------------------------------------------------
+
+  async cancelEscrow(commitment: string): Promise<BlockchainReceipt> {
+    this.ensureEscrow();
+    const tx = await this.escrowContract!.cancel(commitment);
+    this.logger.log(`Escrow cancel tx: ${tx.hash}`);
+    await tx.wait();
+    return { txHash: tx.hash };
+  }
+
+  // -----------------------------------------------------------------------
+  // Escrow — refund (permissionless, post-expiry)
+  // -----------------------------------------------------------------------
+
+  async refundEscrow(commitment: string): Promise<BlockchainReceipt> {
+    this.ensureEscrow();
+    const tx = await this.escrowContract!.refund(commitment);
+    this.logger.log(`Escrow refund tx: ${tx.hash}`);
     await tx.wait();
     return { txHash: tx.hash };
   }
 
   /**
-   * Returns an escrow to its depositor. Uses `cancel` while the escrow is still
-   * live (only the depositor may) and `refund` once it has expired (anyone may).
+   * Legacy alias used by escrow.service.ts (post-expiry) and
+   * transfer.service.ts (pre-expiry cancel). Dispatches to the correct
+   * on-chain function based on whether the escrow has expired.
    */
   async reverseEscrow(
     commitment: string,
-    amount: string,
+    _amount: string,
   ): Promise<BlockchainReceipt> {
-    if (!this.escrow) {
-      return { txHash: this.mockHash('reverse', amount) };
+    this.ensureEscrow();
+
+    // Try to read the on-chain state to decide cancel vs refund
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const escrow: any = await (this.escrowContract as any).getEscrow(
+        commitment,
+      );
+      const expiry = Number(escrow.expiry);
+      const now = await this.chainNow();
+
+      if (now > expiry) {
+        return this.refundEscrow(commitment);
+      }
+      return this.cancelEscrow(commitment);
+    } catch {
+      // If we can't read state, default to refund (post-expiry path)
+      return this.refundEscrow(commitment);
     }
-
-    const record = (await this.escrow.getEscrow(commitment)) as {
-      expiry: bigint;
-    };
-    const expired = (await this.chainNow()) > Number(record.expiry);
-
-    const tx = expired
-      ? await this.escrow.refund(commitment)
-      : await this.escrow.cancel(commitment);
-    await tx.wait();
-    return { txHash: tx.hash };
   }
 
-  /** Moves funds from Wype's custody to the user's own wallet. */
+  // -----------------------------------------------------------------------
+  // Self-custody
+  // -----------------------------------------------------------------------
+
   async moveToSelfCustody(
     toAddress: string,
     amount: string,
@@ -246,36 +328,31 @@ export class BlockchainService implements OnModuleInit {
     return this.directTransfer(toAddress, amount);
   }
 
-  /**
-   * Generates a Quai keypair in Cyprus-1.
-   *
-   * A random key lands in a random zone and Cyprus-1 would reject it, so this
-   * grinds until the address carries the right prefix — roughly one attempt in
-   * twelve hundred, a few hundred milliseconds.
-   */
+  // -----------------------------------------------------------------------
+  // Wallet generation (for new users)
+  // -----------------------------------------------------------------------
+
   generateWallet(): GeneratedWallet {
-    for (let attempts = 0; attempts < 5_000_000; attempts++) {
-      const wallet = new quais.Wallet(quais.hexlify(quais.randomBytes(32)));
-      const address = wallet.address;
+    const entropy = randomBytes(32);
+    const phrase = Mnemonic.fromEntropy(entropy);
+    const wallet = QuaiHDWallet.fromMnemonic(phrase);
+    const addrInfo = wallet.getNextAddressSync(0, Zone.Cyprus1);
 
-      if (
-        quais.getZoneForAddress(address) === CYPRUS_1 &&
-        quais.isQuaiAddress(address)
-      ) {
-        return {
-          address,
-          // TODO: encrypt with the user's password before storing.
-          encryptedPrivateKey: `mock:v1:${Buffer.from(
-            wallet.privateKey,
-          ).toString('base64')}`,
-        };
-      }
-    }
+    // Encrypt the mnemonic with a dedicated server-side key
+    const serverSecret =
+      process.env.WALLET_ENCRYPTION_KEY ??
+      process.env.JWT_SECRET ??
+      'dev-fallback-secret-do-not-use-in-prod';
+    const key = createHash('sha256').update(serverSecret).digest();
+    const iv = randomBytes(16);
+    const cipher = createCipheriv('aes-256-cbc', key, iv);
+    let encrypted = cipher.update(phrase.phrase, 'utf8', 'hex');
+    encrypted += cipher.final('hex');
+    const encryptedPrivateKey = `enc:v1:${iv.toString('hex')}:${encrypted}`;
 
-    throw new Error('Could not generate a Cyprus-1 address');
-  }
-
-  private mockHash(kind: string, detail: string): string {
-    return `0xmock-${kind}-${detail}-${randomBytes(8).toString('hex')}`;
+    return {
+      address: addrInfo.address,
+      encryptedPrivateKey,
+    };
   }
 }

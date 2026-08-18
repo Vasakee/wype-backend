@@ -51,7 +51,7 @@ export class AuthService {
       passwordHash,
     });
 
-    this.magicLinkService.sendMagicLink(email, link);
+    void this.magicLinkService.sendMagicLink(email, link);
 
     return {
       message:
@@ -110,7 +110,7 @@ export class AuthService {
       email: normalized,
       claimToken,
     });
-    this.magicLinkService.sendMagicLink(normalized, link);
+    void this.magicLinkService.sendMagicLink(normalized, link);
 
     return {
       message: 'Magic link sent to your email.',

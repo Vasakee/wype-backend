@@ -106,7 +106,18 @@ export class EscrowService {
     // The commitment recorded at deposit time is the escrow's on-chain handle.
     if (!escrow.escrowId) return '0';
 
-    const receipt = await this.blockchainService.claimEscrow(escrow.escrowId);
+    // The on-chain claim requires the recipient's wallet address.
+    const recipient = await this.usersService.findById(userId);
+    if (!recipient?.walletAddress) {
+      throw new NotFoundException(
+        'No wallet found. Link a Quai wallet before claiming.',
+      );
+    }
+
+    const receipt = await this.blockchainService.claimEscrow(
+      escrow.escrowId,
+      recipient.walletAddress,
+    );
 
     await this.walletService.credit(userId, escrow.amount);
 
@@ -150,9 +161,8 @@ export class EscrowService {
     for (const escrow of expired) {
       if (!escrow.escrowId) continue;
 
-      const receipt = await this.blockchainService.reverseEscrow(
+      const receipt = await this.blockchainService.refundEscrow(
         escrow.escrowId,
-        escrow.amount,
       );
 
       await this.walletService.credit(escrow.sender.toString(), escrow.amount);

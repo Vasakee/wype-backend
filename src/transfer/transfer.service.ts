@@ -142,9 +142,8 @@ export class TransferService {
       throw new BadRequestException('This transfer cannot be cancelled');
     }
 
-    const receipt = await this.blockchainService.reverseEscrow(
+    const receipt = await this.blockchainService.cancelEscrow(
       transfer.escrowId,
-      transfer.amount,
     );
 
     await this.walletService.credit(userId, transfer.amount);
@@ -401,7 +400,7 @@ export class TransferService {
     // which anyone could precompute to see who is owed money.
     const claimToken = randomBytes(32).toString('hex');
     const commitment = this.blockchainService.commitmentFor(
-      escrowKey,
+      this.blockchainService.hashEmail(escrowKey),
       claimToken,
     );
 
@@ -443,7 +442,7 @@ export class TransferService {
       ? `${this.configService.get<string>('FRONTEND_URL') ?? 'http://localhost:3000'}/claim/${transfer.claimToken}`
       : undefined;
 
-    this.emailService.send(
+    void this.emailService.send(
       transfer.recipientEmail,
       'You received money on Wype',
       claimUrl

@@ -52,7 +52,7 @@ export class WhatsappAuthService {
       expiresAt: Date.now() + CODE_TTL_MS,
     });
 
-    this.emailService.send(
+    void this.emailService.send(
       normalized,
       'Your Wype verification code',
       `Your Wype verification code is ${code}. Reply with it on WhatsApp to finish registering.`,

@@ -17,12 +17,12 @@ const ESCROW_ID = 'cccccccccccccccccccccccc';
 describe('EscrowService', () => {
   let service: EscrowService;
   let transferModel: { find: jest.Mock; create: jest.Mock };
-  let usersService: { verifyTransactionPin: jest.Mock };
+  let usersService: { verifyTransactionPin: jest.Mock; findById: jest.Mock };
   let walletService: { credit: jest.Mock };
   let blockchainService: {
     hashEmail: jest.Mock;
     claimEscrow: jest.Mock;
-    reverseEscrow: jest.Mock;
+    refundEscrow: jest.Mock;
   };
 
   const buildEscrowDoc = (overrides: Record<string, unknown> = {}) => ({
@@ -48,12 +48,17 @@ describe('EscrowService', () => {
       verifyTransactionPin: jest
         .fn()
         .mockResolvedValue({ _id: USER_ID, email: 'bob@example.com' }),
+      findById: jest.fn().mockResolvedValue({
+        _id: USER_ID,
+        email: 'bob@example.com',
+        walletAddress: '0x005e2c53242444e260fa910e08f19529f5b39a4c',
+      }),
     };
     walletService = { credit: jest.fn().mockResolvedValue(undefined) };
     blockchainService = {
       hashEmail: jest.fn((email) => `hash-${email}`),
       claimEscrow: jest.fn().mockResolvedValue({ txHash: '0xclaim' }),
-      reverseEscrow: jest.fn().mockResolvedValue({ txHash: '0xreverse' }),
+      refundEscrow: jest.fn().mockResolvedValue({ txHash: '0xreverse' }),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -85,7 +90,10 @@ describe('EscrowService', () => {
 
       expect(walletService.credit).toHaveBeenCalledWith(USER_ID, escrow.amount);
       // Settled against the on-chain commitment recorded at deposit time.
-      expect(blockchainService.claimEscrow).toHaveBeenCalledWith('escrow-1');
+      expect(blockchainService.claimEscrow).toHaveBeenCalledWith(
+        'escrow-1',
+        '0x005e2c53242444e260fa910e08f19529f5b39a4c',
+      );
       expect(transferModel.create).toHaveBeenCalledWith(
         expect.objectContaining({
           type: TransferType.Claim,
@@ -126,10 +134,7 @@ describe('EscrowService', () => {
           status: TransferStatus.Escrowed,
         }),
       );
-      expect(blockchainService.reverseEscrow).toHaveBeenCalledWith(
-        'escrow-1',
-        expired.amount,
-      );
+      expect(blockchainService.refundEscrow).toHaveBeenCalledWith('escrow-1');
       expect(walletService.credit).toHaveBeenCalledWith(
         SENDER_ID,
         expired.amount,
