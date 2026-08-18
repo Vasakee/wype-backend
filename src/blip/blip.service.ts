@@ -184,8 +184,10 @@ export class BlipService {
 
   private async fiatToMinorUnits(amountCents: number): Promise<string> {
     const price = await this.getPrice();
+    // Blip returns `{ price: 0.0116, ... }` in USD. The other spellings are kept
+    // as fallbacks in case the field is renamed.
     const usdPerQuai = Number(
-      price.usd ?? price.priceUsd ?? price.usd_price ?? 0,
+      price.price ?? price.usd ?? price.priceUsd ?? price.usd_price ?? 0,
     );
     if (!usdPerQuai || usdPerQuai <= 0) {
       throw new BadRequestException(
