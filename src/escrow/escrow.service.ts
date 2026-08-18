@@ -103,12 +103,10 @@ export class EscrowService {
     escrow: TransferDocument,
     userId: string,
   ): Promise<string> {
-    const escrowKey = escrow.recipientEmail ?? escrow.recipientWhatsapp;
-    if (!escrowKey) return '0';
+    // The commitment recorded at deposit time is the escrow's on-chain handle.
+    if (!escrow.escrowId) return '0';
 
-    const receipt = await this.blockchainService.claimEscrow(
-      this.blockchainService.hashEmail(escrowKey),
-    );
+    const receipt = await this.blockchainService.claimEscrow(escrow.escrowId);
 
     await this.walletService.credit(userId, escrow.amount);
 
@@ -150,11 +148,10 @@ export class EscrowService {
 
     let reversed = 0;
     for (const escrow of expired) {
-      const escrowKey = escrow.recipientEmail ?? escrow.recipientWhatsapp;
-      if (!escrowKey) continue;
+      if (!escrow.escrowId) continue;
 
       const receipt = await this.blockchainService.reverseEscrow(
-        this.blockchainService.hashEmail(escrowKey),
+        escrow.escrowId,
         escrow.amount,
       );
 

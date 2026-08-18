@@ -36,6 +36,8 @@ describe('TransferService', () => {
   };
   let blockchainService: {
     hashEmail: jest.Mock;
+    commitmentFor: jest.Mock;
+    chainNow: jest.Mock;
     directTransfer: jest.Mock;
     depositToEscrow: jest.Mock;
     reverseEscrow: jest.Mock;
@@ -76,6 +78,8 @@ describe('TransferService', () => {
     };
     blockchainService = {
       hashEmail: jest.fn((email) => `hash-${email}`),
+      commitmentFor: jest.fn((key: string) => `commitment-${key}`),
+      chainNow: jest.fn().mockResolvedValue(Math.floor(Date.now() / 1000)),
       directTransfer: jest.fn().mockResolvedValue({ txHash: '0xdirect' }),
       depositToEscrow: jest
         .fn()
@@ -160,9 +164,11 @@ describe('TransferService', () => {
         pin: '1234',
       });
 
+      // Keyed by the salted commitment, never by a bare hash of the recipient.
       expect(blockchainService.depositToEscrow).toHaveBeenCalledWith(
-        'hash-bob@example.com',
+        'commitment-bob@example.com',
         expect.any(String),
+        expect.any(Number),
       );
       expect(transfer.type).toBe(TransferType.Send);
       expect(transfer.status).toBe(TransferStatus.Escrowed);

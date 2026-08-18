@@ -1,0 +1,11 @@
+# Foundry build output
+out/
+cache/
+broadcast/
+
+# Dependencies are restored with `forge install` (see README)
+lib/
+
+# Local secrets
+.env
+smoke.log

@@ -1,0 +1,32 @@
+[profile.default]
+src = "src"
+out = "out"
+libs = ["lib"]
+test = "test"
+script = "script"
+
+solc_version = "0.8.24"
+optimizer = true
+optimizer_runs = 200
+via_ir = false
+
+# Quai's EVM support level is not guaranteed to include the Shanghai `PUSH0`
+# opcode, and a contract that deploys but reverts on every call is the worst
+# possible failure mode. "paris" emits bytecode that predates PUSH0, so it runs
+# anywhere. Bump this to "shanghai"/"cancun" only after confirming against a
+# live Quai node.
+evm_version = "paris"
+
+remappings = [
+  "forge-std/=lib/forge-std/src/",
+  "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
+]
+
+[fmt]
+line_length = 100
+tab_width = 4
+bracket_spacing = false
+int_types = "long"
+
+[rpc_endpoints]
+quai_local = "${QUAI_RPC_URL}"
