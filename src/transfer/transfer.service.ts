@@ -138,13 +138,12 @@ export class TransferService {
       throw new BadRequestException('This escrow has expired');
     }
 
-    const escrowKey = transfer.recipientEmail ?? transfer.recipientWhatsapp;
-    if (!escrowKey) {
+    if (!transfer.escrowId) {
       throw new BadRequestException('This transfer cannot be cancelled');
     }
 
     const receipt = await this.blockchainService.reverseEscrow(
-      this.blockchainService.hashEmail(escrowKey),
+      transfer.escrowId,
       transfer.amount,
     );
 
@@ -396,10 +395,25 @@ export class TransferService {
       throw new BadRequestException('Recipient is required');
     }
 
-    const emailHash = this.blockchainService.hashEmail(escrowKey);
+    // The claim token doubles as the commitment salt, so it has to exist before
+    // the deposit rather than being minted alongside the record. Without the
+    // salt the on-chain key would be a bare hash of the recipient's email —
+    // which anyone could precompute to see who is owed money.
+    const claimToken = randomBytes(32).toString('hex');
+    const commitment = this.blockchainService.commitmentFor(
+      escrowKey,
+      claimToken,
+    );
+
+    // Derive the expiry from the chain's clock, not the server's, so the record
+    // and the contract agree on when this becomes refundable.
+    const expirySeconds =
+      (await this.blockchainService.chainNow()) + ESCROW_DURATION_MS / 1000;
+
     const receipt = await this.blockchainService.depositToEscrow(
-      emailHash,
+      commitment,
       amount,
+      expirySeconds,
     );
 
     await this.walletService.debit(params.userId, amount);
@@ -413,9 +427,9 @@ export class TransferService {
       channel: params.channel,
       type: TransferType.Send,
       status: TransferStatus.Escrowed,
-      escrowExpiry: new Date(Date.now() + ESCROW_DURATION_MS),
+      escrowExpiry: new Date(expirySeconds * 1000),
       escrowId: receipt.escrowId,
-      claimToken: randomBytes(32).toString('hex'),
+      claimToken,
       txHash: receipt.txHash,
       pinVerifiedAt: new Date(),
     });

@@ -84,9 +84,8 @@ describe('EscrowService', () => {
         await service.claim(USER_ID, '1234');
 
       expect(walletService.credit).toHaveBeenCalledWith(USER_ID, escrow.amount);
-      expect(blockchainService.claimEscrow).toHaveBeenCalledWith(
-        'hash-bob@example.com',
-      );
+      // Settled against the on-chain commitment recorded at deposit time.
+      expect(blockchainService.claimEscrow).toHaveBeenCalledWith('escrow-1');
       expect(transferModel.create).toHaveBeenCalledWith(
         expect.objectContaining({
           type: TransferType.Claim,
@@ -128,7 +127,7 @@ describe('EscrowService', () => {
         }),
       );
       expect(blockchainService.reverseEscrow).toHaveBeenCalledWith(
-        'hash-bob@example.com',
+        'escrow-1',
         expired.amount,
       );
       expect(walletService.credit).toHaveBeenCalledWith(
