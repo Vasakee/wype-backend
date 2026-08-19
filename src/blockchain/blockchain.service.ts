@@ -42,6 +42,7 @@ export class BlockchainService {
   private readonly escrowAddress: string;
   private readonly escrowContract: Contract | null = null;
   private readonly verifierWallet: Wallet | null = null;
+  private readonly rpcUrl: string;
 
   constructor(configService: ConfigService) {
     const rpcUrl =
@@ -53,6 +54,7 @@ export class BlockchainService {
       configService.get<string>('WYPE_ESCROW_ADDRESS') ?? '';
 
     // Provider — always initialised so reads work without keys
+    this.rpcUrl = rpcUrl;
     this.provider = new quais.JsonRpcProvider(rpcUrl, undefined, {
       usePathing: true,
     });
@@ -323,12 +325,28 @@ export class BlockchainService {
 
   /** Read the on-chain QUAI balance (in wei) for an arbitrary address. */
   async getBalance(address: string): Promise<string> {
-    const bal = await this.provider.send(
-      'eth_getBalance',
-      [address, 'latest'],
-      quais.Shard.Cyprus1,
-    );
-    return BigInt(bal).toString();
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10_000);
+    try {
+      const res = await fetch(this.rpcUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          method: 'eth_getBalance',
+          params: [address, 'latest'],
+          id: 1,
+        }),
+        signal: controller.signal,
+      });
+      const json = (await res.json()) as { result?: string; error?: { message: string } };
+      if (json.error) {
+        throw new Error(json.error.message);
+      }
+      return BigInt(json.result ?? '0x0').toString();
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   // -----------------------------------------------------------------------
