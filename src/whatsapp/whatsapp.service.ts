@@ -320,6 +320,10 @@ export class WhatsappService {
 
     const user = await this.usersService.findByPhoneNumber(from);
     if (!user) {
+      // Block voice notes from unregistered users
+      if (media?.mediaUrl) {
+        return 'Please register first. Reply with your email address to create an account.';
+      }
       return this.handleUnregistered(from, body, session);
     }
 
@@ -466,7 +470,7 @@ export class WhatsappService {
       state: 'awaiting-email',
       createdAt: Date.now(),
     });
-    return c.welcome;
+    return 'Welcome to Wype! To use this bot, you need to create an account first. Reply with your email address to get started.';
   }
 
   private async handleRegistrationEmail(
@@ -539,7 +543,9 @@ export class WhatsappService {
 
     const text = transcript.trim().toLowerCase();
     if (!text) {
-      return c.voiceTranscribeError;
+      return lang === 'pcm'
+        ? 'Sorry, I no fit understand your voice note. Abeg type your command like "Send 10 QUAI to john@email.com".'
+        : 'Voice transcription is not available right now. Please type your command like "Send 10 QUAI to john@email.com".';
     }
 
     const intent = this.parseTransferIntent(text);
