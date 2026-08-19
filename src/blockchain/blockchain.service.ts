@@ -208,8 +208,11 @@ export class BlockchainService {
       to: toAddress,
       value: BigInt(amount),
     });
-    this.logger.log(`Direct transfer tx: ${tx.hash}`);
-    await tx.wait();
+    this.logger.log(`Direct transfer tx broadcast: ${tx.hash}`);
+    // Don't block on confirmation — let the transfer service return immediately.
+    tx.wait().catch((e) =>
+      this.logger.error(`Direct transfer tx ${tx.hash} failed on-chain`, e),
+    );
     return { txHash: tx.hash };
   }
 
@@ -228,8 +231,10 @@ export class BlockchainService {
       Math.floor(expirySeconds),
       { value: BigInt(amount) },
     );
-    this.logger.log(`Escrow deposit tx: ${tx.hash}`);
-    await tx.wait();
+    this.logger.log(`Escrow deposit tx broadcast: ${tx.hash}`);
+    tx.wait().catch((e: unknown) =>
+      this.logger.error(`Escrow deposit tx ${tx.hash} failed on-chain`, e),
+    );
     return { txHash: tx.hash, escrowId: commitment };
   }
 
