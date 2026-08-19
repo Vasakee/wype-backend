@@ -21,7 +21,7 @@ import { WhatsappService } from './whatsapp.service';
     WalletModule,
     AuthModule,
     BlipModule,
-    RequestModule,
+    forwardRef(() => RequestModule),
   ],
   controllers: [WhatsappController],
   providers: [WhatsappService, WhatsappAuthService],

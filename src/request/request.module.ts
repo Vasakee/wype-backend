@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { TransferModule } from '../transfer/transfer.module';
 import { UsersModule } from '../users/users.module';
@@ -10,7 +10,7 @@ import { RequestService } from './request.service';
   imports: [
     MongooseModule.forFeature([{ name: Request.name, schema: RequestSchema }]),
     UsersModule,
-    TransferModule,
+    forwardRef(() => TransferModule),
   ],
   controllers: [RequestController],
   providers: [RequestService],
