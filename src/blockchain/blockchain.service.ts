@@ -10,6 +10,7 @@ import {
   Wallet,
 } from 'quais';
 import { WYPE_ESCROW_ABI } from './wype-escrow.abi';
+import { WYPE_REGISTRY_ABI } from './wype-registry.abi';
 
 // ---------------------------------------------------------------------------
 // Types — every consumer depends on these shapes
@@ -41,6 +42,8 @@ export class BlockchainService {
 
   private readonly escrowAddress: string;
   private readonly escrowContract: Contract | null = null;
+  private readonly registryAddress: string;
+  private readonly registryContract: Contract | null = null;
   private readonly verifierWallet: Wallet | null = null;
   private readonly rpcUrl: string;
 
@@ -52,6 +55,8 @@ export class BlockchainService {
 
     this.escrowAddress =
       configService.get<string>('WYPE_ESCROW_ADDRESS') ?? '';
+    this.registryAddress =
+      configService.get<string>('WYPE_REGISTRY_ADDRESS') ?? '';
 
     // Provider — always initialised so reads work without keys
     this.rpcUrl = rpcUrl;
@@ -109,6 +114,17 @@ export class BlockchainService {
       this.escrowContract = new quais.Contract(
         this.escrowAddress,
         WYPE_ESCROW_ABI,
+        signer,
+      );
+    }
+
+    // Registry contract
+    if (this.registryAddress) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const signer = this.getSigner() as any;
+      this.registryContract = new quais.Contract(
+        this.registryAddress,
+        WYPE_REGISTRY_ABI,
         signer,
       );
     }
@@ -363,6 +379,49 @@ export class BlockchainService {
     amount: string,
   ): Promise<BlockchainReceipt> {
     return this.directTransfer(toAddress, amount);
+  }
+
+  // -----------------------------------------------------------------------
+  // Name registry
+  // -----------------------------------------------------------------------
+
+  private ensureRegistry(): void {
+    if (!this.registryContract) {
+      throw new Error(
+        'WYPE_REGISTRY_ADDRESS must be set. ' +
+          'Deploy the registry first, then add the address to .env.',
+      );
+    }
+  }
+
+  /** Register a username on-chain. Only callable by the hot wallet (owner). */
+  async registerName(
+    name: string,
+    walletAddress: string,
+  ): Promise<BlockchainReceipt> {
+    this.ensureConfigured();
+    this.ensureRegistry();
+    const tx = await this.registryContract!.register(name, walletAddress);
+    this.logger.log(`Registry register tx: ${tx.hash}`);
+    await tx.wait();
+    return { txHash: tx.hash };
+  }
+
+  /** Resolve a username to a wallet address on-chain. */
+  async resolveName(name: string): Promise<string> {
+    this.ensureRegistry();
+    const address: string = await this.registryContract!.resolve(name);
+    return address;
+  }
+
+  /** Clear a username on-chain. */
+  async clearName(name: string): Promise<BlockchainReceipt> {
+    this.ensureConfigured();
+    this.ensureRegistry();
+    const tx = await this.registryContract!.clear(name);
+    this.logger.log(`Registry clear tx: ${tx.hash}`);
+    await tx.wait();
+    return { txHash: tx.hash };
   }
 
   // -----------------------------------------------------------------------

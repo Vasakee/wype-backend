@@ -5,6 +5,7 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Logger,
   Post,
   Query,
   Req,
@@ -12,6 +13,7 @@ import {
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import type { AuthenticatedRequest } from '../auth/interfaces/authenticated-request.interface';
+import { BlockchainService } from '../blockchain/blockchain.service';
 import { ClaimUsernameDto } from './dto/claim-username.dto';
 import { UsersService } from './users.service';
 
@@ -20,7 +22,12 @@ import { UsersService } from './users.service';
 @Controller('user')
 @UseGuards(JwtAuthGuard)
 export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
+  private readonly logger = new Logger(UsersController.name);
+
+  constructor(
+    private readonly usersService: UsersService,
+    private readonly blockchainService: BlockchainService,
+ ) {}
 
   @ApiOperation({ summary: 'Get the current user profile' })
   @Get('me')
@@ -56,10 +63,29 @@ export class UsersController {
   })
   @Post('claim-username')
   @HttpCode(HttpStatus.OK)
-  claimUsername(
+  async claimUsername(
     @Req() req: AuthenticatedRequest,
     @Body() dto: ClaimUsernameDto,
   ) {
-    return this.usersService.claimUsername(req.user.sub, dto.username);
+    const user = await this.usersService.claimUsername(
+      req.user.sub,
+      dto.username,
+    );
+
+    // Register on-chain (best-effort — DB write is the source of truth)
+    if (user.walletAddress) {
+      try {
+        await this.blockchainService.registerName(
+          dto.username.toLowerCase().trim(),
+          user.walletAddress,
+        );
+      } catch (error) {
+        this.logger.warn(
+          `On-chain registration failed for ${dto.username}: ${(error as Error).message}`,
+        );
+      }
+    }
+
+    return user;
   }
 }
