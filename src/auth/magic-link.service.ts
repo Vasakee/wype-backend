@@ -1,7 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { InjectModel } from '@nestjs/mongoose';
 import { randomBytes } from 'node:crypto';
+import { Model } from 'mongoose';
 import { EmailService } from '../email/email.service';
+import {
+  MagicLinkToken,
+  MagicLinkTokenDocument,
+} from './schemas/magic-link-token.schema';
 
 export interface PendingRegistration {
   email: string;
@@ -9,41 +15,39 @@ export interface PendingRegistration {
   phoneNumber?: string;
   passwordHash?: string;
   claimToken?: string;
-  expiresAt: number;
 }
-
-const MAGIC_LINK_TTL_MS = 15 * 60 * 1000;
 
 @Injectable()
 export class MagicLinkService {
   private readonly logger = new Logger(MagicLinkService.name);
-  private readonly pending = new Map<string, PendingRegistration>();
 
   constructor(
     private readonly configService: ConfigService,
     private readonly emailService: EmailService,
+    @InjectModel(MagicLinkToken.name)
+    private readonly tokenModel: Model<MagicLinkTokenDocument>,
   ) {}
 
-  issue(registration: Omit<PendingRegistration, 'expiresAt'>): {
+  async issue(registration: PendingRegistration): Promise<{
     token: string;
     link: string;
-  } {
+  }> {
     const token = randomBytes(32).toString('hex');
-    this.pending.set(token, {
-      ...registration,
-      expiresAt: Date.now() + MAGIC_LINK_TTL_MS,
-    });
+    await this.tokenModel.create({ token, ...registration });
     return { token, link: this.buildLink(token) };
   }
 
-  consume(token: string): PendingRegistration | null {
-    const registration = this.pending.get(token);
-    if (!registration) return null;
+  async consume(token: string): Promise<PendingRegistration | null> {
+    const doc = await this.tokenModel.findOneAndDelete({ token }).exec();
+    if (!doc) return null;
 
-    this.pending.delete(token);
-    if (Date.now() > registration.expiresAt) return null;
-
-    return registration;
+    return {
+      email: doc.email,
+      fullName: doc.fullName,
+      phoneNumber: doc.phoneNumber,
+      passwordHash: doc.passwordHash,
+      claimToken: doc.claimToken,
+    };
   }
 
   async sendMagicLink(to: string, link: string): Promise<void> {
@@ -70,7 +74,7 @@ export class MagicLinkService {
   private buildLink(token: string): string {
     const baseUrl =
       this.configService.get<string>('FRONTEND_URL') ?? 'http://localhost:3000';
-    const url = new URL('/api/auth/verify-magic-link', baseUrl);
+    const url = new URL('/auth/callback', baseUrl);
     url.searchParams.set('token', token);
     return url.toString();
   }

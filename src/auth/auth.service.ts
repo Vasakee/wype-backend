@@ -36,15 +36,24 @@ export class AuthService {
     const email = dto.email.toLowerCase().trim();
 
     const existing = await this.usersService.findByEmail(email);
+
+    // Returning user — send a login magic link instead of blocking
     if (existing?.isEmailVerified) {
-      throw new ConflictException('An account with this email already exists');
+      const { token, link } = await this.magicLinkService.issue({ email });
+      void this.magicLinkService.sendMagicLink(email, link);
+      return {
+        message: 'Sign-in link sent to your email.',
+        ...(process.env.NODE_ENV === 'production'
+          ? {}
+          : { magicLink: link, token }),
+      };
     }
 
     const passwordHash = dto.password
       ? await bcrypt.hash(dto.password, BCRYPT_ROUNDS)
       : undefined;
 
-    const { token, link } = this.magicLinkService.issue({
+    const { token, link } = await this.magicLinkService.issue({
       email,
       fullName: dto.fullName,
       phoneNumber: dto.phoneNumber,
@@ -63,7 +72,7 @@ export class AuthService {
   }
 
   async verifyMagicLink(token: string) {
-    const pending = this.magicLinkService.consume(token);
+    const pending = await this.magicLinkService.consume(token);
     if (!pending) {
       throw new BadRequestException('Magic link is invalid or has expired');
     }
@@ -104,9 +113,9 @@ export class AuthService {
    * public claim page: the recipient verifies their email and the escrow is
    * credited on the way in.
    */
-  issueClaimLink(email: string, claimToken: string) {
+  async issueClaimLink(email: string, claimToken: string) {
     const normalized = email.trim().toLowerCase();
-    const { token, link } = this.magicLinkService.issue({
+    const { token, link } = await this.magicLinkService.issue({
       email: normalized,
       claimToken,
     });
