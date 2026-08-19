@@ -1,5 +1,5 @@
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Post, Req, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import type { AuthenticatedRequest } from '../auth/interfaces/authenticated-request.interface';
 import { CreateWalletDto } from './dto/create-wallet.dto';
@@ -24,5 +24,15 @@ export class WalletController {
   @Post()
   createWallet(@Req() req: AuthenticatedRequest, @Body() dto: CreateWalletDto) {
     return this.walletService.create(req.user.sub, dto.address);
+  }
+
+  @ApiOperation({
+    summary:
+      'Check on-chain balance and credit any new deposits to the custodial ledger',
+  })
+  @Post('deposit/check')
+  @HttpCode(HttpStatus.OK)
+  checkDeposit(@Req() req: AuthenticatedRequest) {
+    return this.walletService.checkDeposit(req.user.sub);
   }
 }

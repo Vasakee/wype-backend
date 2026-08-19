@@ -318,6 +318,20 @@ export class BlockchainService {
   }
 
   // -----------------------------------------------------------------------
+  // Read-only helpers
+  // -----------------------------------------------------------------------
+
+  /** Read the on-chain QUAI balance (in wei) for an arbitrary address. */
+  async getBalance(address: string): Promise<string> {
+    const bal = await this.provider.send(
+      'eth_getBalance',
+      [address, 'latest'],
+      quais.Shard.Cyprus1,
+    );
+    return BigInt(bal).toString();
+  }
+
+  // -----------------------------------------------------------------------
   // Self-custody
   // -----------------------------------------------------------------------
 

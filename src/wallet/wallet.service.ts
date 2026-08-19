@@ -1,6 +1,7 @@
 import {
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
@@ -11,6 +12,8 @@ import { Wallet, WalletDocument } from './schemas/wallet.schema';
 
 @Injectable()
 export class WalletService {
+  private readonly logger = new Logger(WalletService.name);
+
   constructor(
     @InjectModel(Wallet.name)
     private readonly walletModel: Model<WalletDocument>,
@@ -66,5 +69,33 @@ export class WalletService {
       throw new NotFoundException('No wallet found for this user');
     }
     return wallet;
+  }
+
+  /**
+   * Read the on-chain balance of the user's custodial wallet and credit any
+   * new deposits to the off-chain ledger.  Returns the newly credited amount
+   * (in minor units) or "0" if nothing new was found.
+   */
+  async checkDeposit(userId: string): Promise<{ credited: string; newBalance: string }> {
+    const wallet = await this.getByUserIdOrThrow(userId);
+
+    const onChainWei = BigInt(await this.blockchainService.getBalance(wallet.address));
+    const ledgerWei = BigInt(wallet.balance);
+
+    // The on-chain address only receives deposits; withdrawals come from the
+    // treasury hot wallet, so on-chain >= ledger always holds for deposits.
+    const diff = onChainWei - ledgerWei;
+    if (diff <= 0n) {
+      return { credited: '0', newBalance: wallet.balance };
+    }
+
+    wallet.balance = onChainWei.toString();
+    await wallet.save();
+
+    this.logger.log(
+      `Credited ${diff} wei deposit for ${wallet.address} (on-chain ${onChainWei}, was ledger ${ledgerWei})`,
+    );
+
+    return { credited: diff.toString(), newBalance: wallet.balance };
   }
 }
