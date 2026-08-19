@@ -286,6 +286,7 @@ export class TransferService {
   getHistory(userId: string): Promise<TransferDocument[]> {
     return this.transferModel
       .find({ $or: [{ sender: userId }, { recipient: userId }] })
+      .populate('sender', 'email')
       .sort({ createdAt: -1 })
       .limit(50)
       .exec();
