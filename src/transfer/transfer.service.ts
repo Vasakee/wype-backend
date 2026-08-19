@@ -361,15 +361,13 @@ export class TransferService {
       throw new BadRequestException('Recipient has not linked a wallet yet');
     }
 
-    const receipt = await this.blockchainService.directTransfer(
-      toAddress,
-      amount,
-    );
-
+    // Debit/credit the custodial ledger immediately — this is the source of
+    // truth for Wype balances and completes in milliseconds.
     await this.walletService.debit(params.userId, amount);
     await this.walletService.credit(recipient._id.toString(), amount);
 
-    return this.transferModel.create({
+    // Create the transfer record as "completed" from the user's perspective.
+    const transfer = await this.transferModel.create({
       sender: new Types.ObjectId(params.userId),
       recipient: recipient._id,
       recipientEmail: params.recipientEmail,
@@ -379,10 +377,29 @@ export class TransferService {
       channel: params.channel,
       type: TransferType.Send,
       status: TransferStatus.Completed,
-      txHash: receipt.txHash,
       requestId: params.requestId,
       pinVerifiedAt: new Date(),
     });
+
+    // Fire off the on-chain transfer in the background. If it fails, we log
+    // it but the custodial ledger is already settled.
+    this.blockchainService
+      .directTransfer(toAddress, amount)
+      .then(async (receipt) => {
+        transfer.txHash = receipt.txHash;
+        await transfer.save();
+        console.log(
+          `[DirectTransfer] ${transfer._id} confirmed on-chain: ${receipt.txHash}`,
+        );
+      })
+      .catch((e: unknown) => {
+        console.error(
+          `[DirectTransfer] ${transfer._id} failed on-chain`,
+          e,
+        );
+      });
+
+    return transfer;
   }
 
   private async runEscrowTransfer(
@@ -394,30 +411,22 @@ export class TransferService {
       throw new BadRequestException('Recipient is required');
     }
 
-    // The claim token doubles as the commitment salt, so it has to exist before
-    // the deposit rather than being minted alongside the record. Without the
-    // salt the on-chain key would be a bare hash of the recipient's email —
-    // which anyone could precompute to see who is owed money.
     const claimToken = randomBytes(32).toString('hex');
     const commitment = this.blockchainService.commitmentFor(
       this.blockchainService.hashEmail(escrowKey),
       claimToken,
     );
 
-    // Derive the expiry from the chain's clock, not the server's, so the record
-    // and the contract agree on when this becomes refundable.
+    // Debit the sender immediately — ledger is the source of truth.
+    await this.walletService.debit(params.userId, amount);
+
+    // Derive the expiry from the chain's clock.
     const expirySeconds =
       (await this.blockchainService.chainNow()) + ESCROW_DURATION_MS / 1000;
 
-    const receipt = await this.blockchainService.depositToEscrow(
-      commitment,
-      amount,
-      expirySeconds,
-    );
-
-    await this.walletService.debit(params.userId, amount);
-
-    return this.transferModel.create({
+    // Create the transfer record before the blockchain tx so the user
+    // sees it immediately. The txHash is filled in after broadcast.
+    const transfer = await this.transferModel.create({
       sender: new Types.ObjectId(params.userId),
       recipientEmail: params.recipientEmail,
       recipientWhatsapp: params.recipientWhatsapp,
@@ -427,11 +436,29 @@ export class TransferService {
       type: TransferType.Send,
       status: TransferStatus.Escrowed,
       escrowExpiry: new Date(expirySeconds * 1000),
-      escrowId: receipt.escrowId,
+      escrowId: commitment,
       claimToken,
-      txHash: receipt.txHash,
       pinVerifiedAt: new Date(),
     });
+
+    // Fire off the on-chain deposit in the background.
+    this.blockchainService
+      .depositToEscrow(commitment, amount, expirySeconds)
+      .then(async (receipt) => {
+        transfer.txHash = receipt.txHash;
+        await transfer.save();
+        console.log(
+          `[EscrowDeposit] ${transfer._id} confirmed on-chain: ${receipt.txHash}`,
+        );
+      })
+      .catch((e: unknown) => {
+        console.error(
+          `[EscrowDeposit] ${transfer._id} failed on-chain`,
+          e,
+        );
+      });
+
+    return transfer;
   }
 
   private notifyEscrowRecipient(transfer: TransferDocument): void {
