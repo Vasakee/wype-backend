@@ -1,45 +1,40 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import nodemailer, { type Transporter } from 'nodemailer';
+import { Resend } from 'resend';
 
 @Injectable()
 export class EmailService implements OnModuleInit {
   private readonly logger = new Logger(EmailService.name);
-  private transporter: Transporter | null = null;
+  private resend: Resend | null = null;
   private from: string;
 
   constructor(private readonly configService: ConfigService) {
     this.from =
-      this.configService.get<string>('GMAIL_USER') ?? 'basildayigil@gmail.com';
+      this.configService.get<string>('RESEND_FROM') ??
+      'Wype <noreply@wype.live>';
   }
 
   onModuleInit() {
-    const user = this.configService.get<string>('GMAIL_USER');
-    const pass = this.configService.get<string>('GMAIL_APP_PASSWORD');
+    const apiKey = this.configService.get<string>('RESEND_API_KEY');
 
-    if (user && pass) {
-      this.transporter = nodemailer.createTransport({
-        host: 'smtp.gmail.com',
-        port: 465,
-        secure: true,
-        auth: { user, pass },
-      });
-      this.logger.log('Gmail SMTP email provider initialized');
+    if (apiKey && apiKey !== 're_your_api_key_here') {
+      this.resend = new Resend(apiKey);
+      this.logger.log('Resend email provider initialized');
     } else {
       this.logger.warn(
-        'GMAIL_USER / GMAIL_APP_PASSWORD not set — emails will be logged only (mock mode)',
+        'RESEND_API_KEY not set — emails will be logged only (mock mode)',
       );
     }
   }
 
   async send(to: string, subject: string, body: string): Promise<void> {
-    if (!this.transporter) {
+    if (!this.resend) {
       this.logger.log(`[mock-email] To: ${to}\nSubject: ${subject}\n\n${body}`);
       return;
     }
 
     try {
-      await this.transporter.sendMail({
+      await this.resend.emails.send({
         from: this.from,
         to,
         subject,
@@ -57,7 +52,7 @@ export class EmailService implements OnModuleInit {
     html: string,
     text?: string,
   ): Promise<void> {
-    if (!this.transporter) {
+    if (!this.resend) {
       this.logger.log(
         `[mock-email] To: ${to}\nSubject: ${subject}\n\n${text ?? html}`,
       );
@@ -65,7 +60,7 @@ export class EmailService implements OnModuleInit {
     }
 
     try {
-      await this.transporter.sendMail({
+      await this.resend.emails.send({
         from: this.from,
         to,
         subject,
