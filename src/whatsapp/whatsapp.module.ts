@@ -2,6 +2,7 @@ import { Global, Module, forwardRef } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { BlipModule } from '../blip/blip.module';
 import { FeesModule } from '../fees/fees.module';
+import { RequestModule } from '../request/request.module';
 import { TransferModule } from '../transfer/transfer.module';
 import { UsersModule } from '../users/users.module';
 import { VoiceModule } from '../voice/voice.module';
@@ -20,6 +21,7 @@ import { WhatsappService } from './whatsapp.service';
     WalletModule,
     AuthModule,
     BlipModule,
+    RequestModule,
   ],
   controllers: [WhatsappController],
   providers: [WhatsappService, WhatsappAuthService],

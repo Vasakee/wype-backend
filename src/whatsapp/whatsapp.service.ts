@@ -12,6 +12,7 @@ import twilio from 'twilio';
 import { BlipService } from '../blip/blip.service';
 import { BlockchainService } from '../blockchain/blockchain.service';
 import { FeesService } from '../fees/fees.service';
+import { RequestService } from '../request/request.service';
 import { TransferStatus } from '../transfer/schemas/transfer.schema';
 import { fromMinorUnits } from '../transfer/units';
 import { TransferService } from '../transfer/transfer.service';
@@ -121,6 +122,15 @@ const copy = {
     pinVerifyPrompt: 'Enter current PIN to verify your identity',
     pinChangeSuccess: 'Your Transaction PIN has been updated.',
     pinChangeError: 'Could not change PIN. Make sure your current PIN is correct.',
+    historyEmpty: 'No transactions yet. Send your first payment with "Send 10 QUAI to john@email.com".',
+    historyItem: (direction: string, email: string, amount: string, currency: string, status: string) =>
+      `${direction === 'out' ? '↑ Sent' : '↓ Received'} ${amount} ${currency} ${direction === 'out' ? 'to' : 'from'} ${email} • ${status}`,
+    historyHeader: (count: number) => `📋 Last ${count} transaction${count === 1 ? '' : 's'}:`,
+    requestPrompt: 'Who do you want to request money from? Reply with their email, e.g. "request 10 from john@email.com".',
+    requestCreated: (amount: string, currency: string, email: string) =>
+      `Request for ${amount} ${currency} from ${email} has been sent.`,
+    requestError: 'Could not create request. Make sure the email is valid and try again.',
+    requestNoRecipient: 'Please include who to request from, e.g. "request 10 from john@email.com".',
   },
   pcm: {
     welcome:
@@ -191,6 +201,15 @@ const copy = {
     pinVerifyPrompt: 'Put current PIN make we know say na you',
     pinChangeSuccess: 'Your Transaction PIN don update.',
     pinChangeError: 'E no fit change PIN. Make sure your current PIN correct.',
+    historyEmpty: 'No transaction yet. Send your first payment with "Send 10 QUAI to john@email.com".',
+    historyItem: (direction: string, email: string, amount: string, currency: string, status: string) =>
+      `${direction === 'out' ? '↑ You send' : '↓ You receive'} ${amount} ${currency} ${direction === 'out' ? 'to' : 'from'} ${email} • ${status}`,
+    historyHeader: (count: number) => `📋 Last ${count} transaction${count === 1 ? '' : 's'}:`,
+    requestPrompt: 'Who you wan request money from? Reply with their email, e.g. "request 10 from john@email.com".',
+    requestCreated: (amount: string, currency: string, email: string) =>
+      `Request for ${amount} ${currency} from ${email} don send.`,
+    requestError: 'E no fit create request. Make sure the email correct try again.',
+    requestNoRecipient: 'Abeg include who you wan request from, e.g. "request 10 from john@email.com".',
   },
 } as const;
 
@@ -212,6 +231,7 @@ export class WhatsappService {
     private readonly whatsappAuth: WhatsappAuthService,
     private readonly blockchainService: BlockchainService,
     private readonly blipService: BlipService,
+    private readonly requestService: RequestService,
     @Inject(forwardRef(() => TransferService))
     private readonly transferService: TransferService,
   ) {}
@@ -377,6 +397,25 @@ export class WhatsappService {
         user._id.toString(),
         langMatch[1],
         from,
+        lang,
+      );
+    }
+
+    // ── History ──
+    if (/^(history|transactions|activity)$/i.test(trimmed)) {
+      return this.handleHistory(user._id.toString(), lang);
+    }
+
+    // ── Request money ──
+    const requestMatch = trimmed.match(
+      /^request\s+(\d+(?:[.,]\d+)?)\s*(?:([a-z]{3,5})\s+)?from\s+(.+)$/i,
+    );
+    if (requestMatch) {
+      return this.handleRequest(
+        user._id.toString(),
+        requestMatch[1],
+        requestMatch[2]?.toUpperCase() ?? 'QUAI',
+        requestMatch[3].trim(),
         lang,
       );
     }
@@ -836,6 +875,66 @@ export class WhatsappService {
   }
 
   // ──────────────────────────────────────────────
+  //  History
+  // ──────────────────────────────────────────────
+
+  private async handleHistory(
+    userId: string,
+    lang: 'en' | 'pcm',
+  ): Promise<string> {
+    const c = copy[lang];
+    try {
+      const transfers = await this.transferService.getHistory(userId);
+      if (transfers.length === 0) return c.historyEmpty;
+
+      const lines = transfers.slice(0, 5).map((t) => {
+        const direction = t.sender?.toString() === userId ? 'out' : 'in';
+        const email =
+          direction === 'out'
+            ? (t.recipientEmail ?? 'unknown')
+            : 'sender';
+        const amount = fromMinorUnits(t.amount);
+        const status = String(t.status ?? 'pending');
+        return c.historyItem(direction, email, amount, t.currency ?? 'QUAI', status);
+      });
+
+      return [c.historyHeader(lines.length), '', ...lines].join('\n');
+    } catch {
+      return lang === 'pcm'
+        ? 'E no fit load your history. Try again later.'
+        : 'Could not load your transaction history. Please try again later.';
+    }
+  }
+
+  // ──────────────────────────────────────────────
+  //  Request money
+  // ──────────────────────────────────────────────
+
+  private async handleRequest(
+    userId: string,
+    amount: string,
+    currency: string,
+    recipient: string,
+    lang: 'en' | 'pcm',
+  ): Promise<string> {
+    const c = copy[lang];
+    if (!EMAIL_PATTERN.test(recipient)) {
+      return c.requestNoRecipient;
+    }
+
+    try {
+      await this.requestService.create(userId, {
+        recipientEmail: recipient.toLowerCase().trim(),
+        amount,
+        currency,
+      });
+      return c.requestCreated(amount, currency, recipient);
+    } catch {
+      return c.requestError;
+    }
+  }
+
+  // ──────────────────────────────────────────────
   //  Help message
   // ──────────────────────────────────────────────
 
@@ -862,6 +961,12 @@ export class WhatsappService {
         '',
         '📊 Get fee quote',
         '   Reply "quote 10 to john@email.com"',
+        '',
+        '📋 View recent transactions',
+        '   Reply "history"',
+        '',
+        '📩 Request money',
+        '   Reply "request 10 from john@email.com"',
         '',
         '🔒 Set or change PIN',
         '   set pin 1234',
@@ -894,6 +999,12 @@ export class WhatsappService {
       '',
       '📊 Get fee quote',
       '   Reply "quote 10 to john@email.com"',
+      '',
+      '📋 View recent transactions',
+      '   Reply "history"',
+      '',
+      '📩 Request money',
+      '   Reply "request 10 from john@email.com"',
       '',
       '🔒 Set or change your Transaction PIN',
       '   set pin 1234',

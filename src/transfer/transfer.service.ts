@@ -283,9 +283,17 @@ export class TransferService {
     });
   }
 
-  getHistory(userId: string): Promise<TransferDocument[]> {
+  async getHistory(userId: string): Promise<TransferDocument[]> {
+    const user = await this.usersService.findById(userId);
+    const or: Record<string, unknown>[] = [
+      { sender: userId },
+      { recipient: userId },
+    ];
+    if (user?.email) or.push({ recipientEmail: user.email.toLowerCase() });
+    if (user?.phoneNumber) or.push({ recipientWhatsapp: user.phoneNumber });
+
     return this.transferModel
-      .find({ $or: [{ sender: userId }, { recipient: userId }] })
+      .find({ $or: or, type: { $ne: TransferType.Claim } })
       .populate('sender', 'email')
       .sort({ createdAt: -1 })
       .limit(50)
