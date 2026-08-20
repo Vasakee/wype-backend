@@ -3,6 +3,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { AdminModule } from './admin/admin.module';
 import { AuthModule } from './auth/auth.module';
 import { BlipModule } from './blip/blip.module';
 import { BlockchainModule } from './blockchain/blockchain.module';
@@ -42,6 +43,7 @@ import { WhatsappModule } from './whatsapp/whatsapp.module';
     MovementModule,
     BlipModule,
     RequestModule,
+    AdminModule,
   ],
   controllers: [AppController],
   providers: [AppService],
