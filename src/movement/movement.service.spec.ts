@@ -80,7 +80,6 @@ describe('MovementService', () => {
     expect(result.blipLink).toContain('blippay.me');
     expect(result.blipLink).toContain('/fund/invoice');
     expect(result.blipLink).toContain(encodeURIComponent(USER.walletAddress));
-    expect(result.txHash).toBe('0xmock-selfcustody-1');
     expect(result.walletAddress).toBe(USER.walletAddress);
   });
 

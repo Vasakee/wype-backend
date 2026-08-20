@@ -88,16 +88,18 @@ export class UsersController {
 
     // Register on-chain (best-effort — DB write is the source of truth)
     if (user.walletAddress) {
-      try {
-        await this.blockchainService.registerName(
-          dto.username.toLowerCase().trim(),
-          user.walletAddress,
+      const username = dto.username.toLowerCase().trim();
+      const walletAddress = user.walletAddress;
+      void this.blockchainService
+        .registerName(username, walletAddress)
+        .then(() =>
+          this.logger.log(`On-chain registration OK for ${username}`),
+        )
+        .catch((error) =>
+          this.logger.warn(
+            `On-chain registration failed for ${username}: ${(error as Error).message}`,
+          ),
         );
-      } catch (error) {
-        this.logger.warn(
-          `On-chain registration failed for ${dto.username}: ${(error as Error).message}`,
-        );
-      }
     }
 
     return user;

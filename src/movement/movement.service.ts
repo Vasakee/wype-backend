@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
@@ -26,6 +27,8 @@ import {
  */
 @Injectable()
 export class MovementService {
+  private readonly logger = new Logger(MovementService.name);
+
   constructor(
     @InjectModel(Movement.name)
     private readonly movementModel: Model<MovementDocument>,
@@ -55,11 +58,7 @@ export class MovementService {
       throw new ConflictException('Insufficient wallet balance');
     }
 
-    const receipt = await this.blockchainService.moveToSelfCustody(
-      user.walletAddress,
-      amount,
-    );
-
+    // Debit immediately — ledger is the source of truth.
     await this.walletService.debit(userId, amount);
 
     const movement = await this.movementModel.create({
@@ -68,7 +67,6 @@ export class MovementService {
       currency: dto.currency ?? 'QUAI',
       type: MovementType.SelfCustody,
       status: MovementStatus.Completed,
-      txHash: receipt.txHash,
     });
 
     const blipLink = buildBlipInvoiceLink({
@@ -79,13 +77,29 @@ export class MovementService {
     movement.blipLink = blipLink;
     await movement.save();
 
+    // Fire off the on-chain transfer in the background.
+    this.blockchainService
+      .moveToSelfCustody(user.walletAddress, amount)
+      .then(async (receipt) => {
+        movement.txHash = receipt.txHash;
+        await movement.save();
+        this.logger.log(
+          `SelfCustody ${movement._id} confirmed: ${receipt.txHash}`,
+        );
+      })
+      .catch((e: unknown) => {
+        this.logger.error(
+          `SelfCustody ${movement._id} failed`,
+          e instanceof Error ? e.stack : String(e),
+        );
+      });
+
     return {
       movementId: movement._id.toString(),
       amount: dto.amount,
       currency: dto.currency ?? 'QUAI',
       walletAddress: user.walletAddress,
       blipLink,
-      txHash: receipt.txHash,
     };
   }
 
