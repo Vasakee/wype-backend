@@ -19,7 +19,7 @@ export class Request {
   @Prop({ type: Types.ObjectId, ref: 'User', index: true })
   recipient?: Types.ObjectId;
 
-  @Prop({ required: true })
+  @Prop({ required: true, index: true })
   recipientEmail: string;
 
   @Prop({ required: true })

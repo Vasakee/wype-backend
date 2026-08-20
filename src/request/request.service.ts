@@ -71,6 +71,8 @@ export class RequestService {
       this.requestModel
         .find({ sender: new Types.ObjectId(userId) })
         .sort({ createdAt: -1 })
+        .limit(50)
+        .lean()
         .exec(),
       this.requestModel
         .find({
@@ -80,6 +82,8 @@ export class RequestService {
           ],
         })
         .sort({ createdAt: -1 })
+        .limit(50)
+        .lean()
         .exec(),
     ]);
 

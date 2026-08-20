@@ -12,7 +12,6 @@ import {
   MovementDocument,
   MovementStatus,
 } from '../movement/movement.schema';
-import { Wallet, WalletDocument } from '../wallet/schemas/wallet.schema';
 
 @Injectable()
 export class AdminService {
@@ -20,7 +19,6 @@ export class AdminService {
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     @InjectModel(Transfer.name) private transferModel: Model<TransferDocument>,
     @InjectModel(Movement.name) private movementModel: Model<MovementDocument>,
-    @InjectModel(Wallet.name) private walletModel: Model<WalletDocument>,
   ) {}
 
   async getDashboard() {

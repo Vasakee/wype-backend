@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -39,10 +40,13 @@ interface ExecuteTransferParams {
   recipientWhatsapp?: string;
   recipientUsername?: string;
   requestId?: string;
+  senderWalletAddress?: string;
 }
 
 @Injectable()
 export class TransferService {
+  private readonly logger = new Logger(TransferService.name);
+
   constructor(
     @InjectModel(Transfer.name)
     private readonly transferModel: Model<TransferDocument>,
@@ -299,9 +303,11 @@ export class TransferService {
 
     return this.transferModel
       .find({ $or: or, type: { $ne: TransferType.Claim } })
-      .populate('sender', 'email')
+      .select('sender recipient recipientEmail recipientWhatsapp amount currency channel type status createdAt escrowExpiry')
+      .populate('sender', 'email fullName')
       .sort({ createdAt: -1 })
       .limit(50)
+      .lean()
       .exec();
   }
 
@@ -323,6 +329,7 @@ export class TransferService {
     if (!senderWallet) {
       throw new BadRequestException('Link a Quai wallet before sending money');
     }
+    params.senderWalletAddress = senderWallet.address;
 
     const recipient = params.recipientEmail
       ? await this.usersService.findByEmail(params.recipientEmail)
@@ -368,9 +375,7 @@ export class TransferService {
     recipient: UserDocument,
     amount: string,
   ): Promise<TransferDocument> {
-    const toAddress = (
-      await this.walletService.findByUserId(recipient._id.toString())
-    )?.address;
+    const toAddress = recipient.walletAddress;
     if (!toAddress) {
       throw new BadRequestException('Recipient has not linked a wallet yet');
     }
@@ -402,14 +407,14 @@ export class TransferService {
       .then(async (receipt) => {
         transfer.txHash = receipt.txHash;
         await transfer.save();
-        console.log(
-          `[DirectTransfer] ${transfer._id} confirmed on-chain: ${receipt.txHash}`,
+        this.logger.log(
+          `DirectTransfer ${transfer._id} confirmed: ${receipt.txHash}`,
         );
       })
       .catch((e: unknown) => {
-        console.error(
-          `[DirectTransfer] ${transfer._id} failed on-chain`,
-          e,
+        this.logger.error(
+          `DirectTransfer ${transfer._id} failed`,
+          e instanceof Error ? e.stack : String(e),
         );
       });
 
@@ -461,14 +466,14 @@ export class TransferService {
       .then(async (receipt) => {
         transfer.txHash = receipt.txHash;
         await transfer.save();
-        console.log(
-          `[EscrowDeposit] ${transfer._id} confirmed on-chain: ${receipt.txHash}`,
+        this.logger.log(
+          `EscrowDeposit ${transfer._id} confirmed: ${receipt.txHash}`,
         );
       })
       .catch((e: unknown) => {
-        console.error(
-          `[EscrowDeposit] ${transfer._id} failed on-chain`,
-          e,
+        this.logger.error(
+          `EscrowDeposit ${transfer._id} failed`,
+          e instanceof Error ? e.stack : String(e),
         );
       });
 

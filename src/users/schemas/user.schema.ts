@@ -34,7 +34,7 @@ export class User {
   @Prop({ trim: true })
   fullName?: string;
 
-  @Prop({ trim: true })
+  @Prop({ trim: true, index: true })
   walletAddress?: string;
 
   @Prop({ select: false })
@@ -46,7 +46,7 @@ export class User {
   @Prop({ default: false })
   isPinSet: boolean;
 
-  @Prop({ default: false })
+  @Prop({ default: false, index: true })
   isEmailVerified: boolean;
 
   @Prop({ default: 'en', enum: ['en', 'pcm'] })
@@ -55,3 +55,5 @@ export class User {
 
 export type UserDocument = HydratedDocument<User>;
 export const UserSchema = SchemaFactory.createForClass(User);
+
+UserSchema.index({ createdAt: -1 });

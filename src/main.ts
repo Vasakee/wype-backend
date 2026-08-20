@@ -33,6 +33,7 @@ async function bootstrap() {
 
   const port = Number(process.env.PORT ?? 3000);
   await app.listen(port);
+  app.enableShutdownHooks();
 
   Logger.log(`Wype API running on http://localhost:${port}/api`, 'Bootstrap');
   Logger.log(`Swagger docs on http://localhost:${port}/api/docs`, 'Bootstrap');

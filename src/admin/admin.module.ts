@@ -5,7 +5,6 @@ import { AdminService } from './admin.service';
 import { User, UserSchema } from '../users/schemas/user.schema';
 import { Transfer, TransferSchema } from '../transfer/schemas/transfer.schema';
 import { Movement, MovementSchema } from '../movement/movement.schema';
-import { Wallet, WalletSchema } from '../wallet/schemas/wallet.schema';
 
 @Module({
   imports: [
@@ -13,7 +12,6 @@ import { Wallet, WalletSchema } from '../wallet/schemas/wallet.schema';
       { name: User.name, schema: UserSchema },
       { name: Transfer.name, schema: TransferSchema },
       { name: Movement.name, schema: MovementSchema },
-      { name: Wallet.name, schema: WalletSchema },
     ]),
   ],
   controllers: [AdminController],

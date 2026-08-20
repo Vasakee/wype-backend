@@ -32,6 +32,7 @@ export class Movement {
     required: true,
     enum: MovementType,
     default: MovementType.SelfCustody,
+    index: true,
   })
   type: MovementType;
 
@@ -48,9 +49,13 @@ export class Movement {
     required: true,
     enum: MovementStatus,
     default: MovementStatus.Pending,
+    index: true,
   })
   status: MovementStatus;
 }
 
 export type MovementDocument = HydratedDocument<Movement>;
 export const MovementSchema = SchemaFactory.createForClass(Movement);
+
+MovementSchema.index({ status: 1, type: 1 });
+MovementSchema.index({ createdAt: -1 });

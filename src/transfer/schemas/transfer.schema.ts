@@ -28,10 +28,10 @@ export class Transfer {
   @Prop({ type: Types.ObjectId, ref: 'User', index: true })
   recipient?: Types.ObjectId;
 
-  @Prop({ lowercase: true, trim: true })
+  @Prop({ lowercase: true, trim: true, index: true })
   recipientEmail?: string;
 
-  @Prop({ trim: true })
+  @Prop({ trim: true, index: true })
   recipientWhatsapp?: string;
 
   @Prop({ required: true })
@@ -44,6 +44,7 @@ export class Transfer {
     required: true,
     enum: TransferStatus,
     default: TransferStatus.Pending,
+    index: true,
   })
   status: TransferStatus;
 
@@ -61,7 +62,7 @@ export class Transfer {
   })
   channel: TransferChannel;
 
-  @Prop()
+  @Prop({ index: true })
   escrowExpiry?: Date;
 
   @Prop()
@@ -88,3 +89,7 @@ export class Transfer {
 
 export type TransferDocument = HydratedDocument<Transfer>;
 export const TransferSchema = SchemaFactory.createForClass(Transfer);
+
+TransferSchema.index({ status: 1, escrowExpiry: 1 });
+TransferSchema.index({ status: 1, createdAt: -1 });
+TransferSchema.index({ createdAt: -1 });
