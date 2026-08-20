@@ -37,10 +37,24 @@ export class UsersController {
 
   @ApiOperation({
     summary:
-      'Check whether an email belongs to a registered Wype account (recipient resolution)',
+      'Check whether an email or username belongs to a registered Wype account (recipient resolution)',
   })
   @Get('lookup')
-  async lookup(@Query('email') email?: string) {
+  async lookup(
+    @Query('email') email?: string,
+    @Query('username') username?: string,
+  ) {
+    if (username) {
+      const user = await this.usersService.findByUsername(username);
+      if (!user) {
+        return { registered: false };
+      }
+      return {
+        registered: true,
+        displayName: user.fullName ?? user.username,
+        username: user.username,
+      };
+    }
     if (!email || !/^\S+@\S+\.\S+$/.test(email)) {
       return { registered: false };
     }

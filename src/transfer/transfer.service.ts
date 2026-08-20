@@ -64,7 +64,11 @@ export class TransferService {
       throw new BadRequestException('Amount must be greater than zero');
     }
 
-    const recipient = await this.usersService.findByEmail(dto.recipientEmail);
+    const recipient = dto.recipientEmail
+      ? await this.usersService.findByEmail(dto.recipientEmail)
+      : dto.recipientUsername
+        ? await this.usersService.findByUsername(dto.recipientUsername)
+        : null;
     if (recipient && recipient._id.toString() === userId) {
       throw new BadRequestException('You cannot send money to yourself');
     }
@@ -263,6 +267,7 @@ export class TransferService {
       currency: dto.currency ?? 'QUAI',
       channel: TransferChannel.Web,
       recipientEmail: dto.recipientEmail,
+      recipientUsername: dto.recipientUsername,
       requestId: dto.requestId,
     });
   }

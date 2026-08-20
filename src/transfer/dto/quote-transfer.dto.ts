@@ -1,13 +1,22 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsEmail, Matches } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsEmail, IsOptional, IsString, Matches } from 'class-validator';
 
 export class QuoteTransferDto {
-  @ApiProperty({
-    description: 'Recipient email address',
+  @ApiPropertyOptional({
+    description: 'Recipient email address (use this OR recipientUsername)',
     example: 'sam@example.com',
   })
+  @IsOptional()
   @IsEmail()
-  recipientEmail: string;
+  recipientEmail?: string;
+
+  @ApiPropertyOptional({
+    description: 'Recipient Wype username (use this OR recipientEmail)',
+    example: 'basil.quai',
+  })
+  @IsOptional()
+  @IsString()
+  recipientUsername?: string;
 
   @ApiProperty({
     description: 'Amount in QUAI (major units)',
