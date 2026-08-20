@@ -14,6 +14,7 @@ import { BlockchainService } from '../blockchain/blockchain.service';
 import { EmailService } from '../email/email.service';
 import { EscrowService, ESCROW_DURATION_MS } from '../escrow/escrow.service';
 import { FeesService } from '../fees/fees.service';
+import { PushService } from '../push/push.service';
 import type { UserDocument } from '../users/schemas/user.schema';
 import { UsersService } from '../users/users.service';
 import { WalletService } from '../wallet/wallet.service';
@@ -58,6 +59,7 @@ export class TransferService {
     private readonly feesService: FeesService,
     private readonly authService: AuthService,
     private readonly configService: ConfigService,
+    private readonly pushService: PushService,
     @Inject('WHATSAPP_SERVICE')
     private readonly whatsappService: WhatsappService,
   ) {}
@@ -78,7 +80,7 @@ export class TransferService {
     }
 
     const mode = recipient ? 'direct' : 'escrow';
-    const fee = this.feesService.calculate(dto.amount);
+    const fee = await this.feesService.calculate(dto.amount, userId);
     const total = Number(dto.amount) + Number(fee);
     const totalStr = total.toFixed(4).replace(/0+$/, '').replace(/\.$/, '');
 
@@ -88,7 +90,20 @@ export class TransferService {
       mode,
       expiryDays:
         mode === 'escrow' ? ESCROW_DURATION_MS / 86_400_000 : undefined,
+      freeTransactionsRemaining: await this.getFreeTransactionsRemaining(userId),
     };
+  }
+
+  private async getFreeTransactionsRemaining(userId: string): Promise<number> {
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const used = await this.transferModel.countDocuments({
+      sender: userId,
+      type: TransferType.Send,
+      status: { $in: [TransferStatus.Completed, TransferStatus.Escrowed] },
+      createdAt: { $gte: startOfMonth },
+    }).exec();
+    return Math.max(0, 3 - used);
   }
 
   async findById(
@@ -514,11 +529,23 @@ export class TransferService {
         .catch(() => undefined);
     }
 
-    if (
-      transfer.status === TransferStatus.Escrowed &&
-      transfer.recipientEmail
-    ) {
+    if (transfer.status === TransferStatus.Escrowed && transfer.recipientEmail) {
       this.notifyEscrowRecipient(transfer);
+    }
+
+    if (recipient?._id) {
+      const isEscrow = transfer.status === TransferStatus.Escrowed;
+      const title = isEscrow ? 'Money waiting for you' : 'Payment received';
+      const body = isEscrow
+        ? `${amount} was sent to you. Open Wype to claim it.`
+        : `You received ${amount} on Wype.`;
+      const url = isEscrow && transfer.claimToken
+        ? `/claim/${transfer.claimToken}`
+        : '/app/activity';
+
+      void this.pushService
+        .sendToUser(recipient._id.toString(), { title, body, url })
+        .catch(() => undefined);
     }
   }
 }

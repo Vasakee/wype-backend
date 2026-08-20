@@ -425,7 +425,7 @@ export class WhatsappService {
     }
 
     // ── Send money ──
-    const intent = this.parseTransferIntent(trimmed);
+    const intent = await this.parseTransferIntent(trimmed);
     if (intent) {
       this.sessions.set(from, {
         state: 'awaiting-pin',
@@ -548,7 +548,7 @@ export class WhatsappService {
         : 'Voice transcription is not available right now. Please type your command like "Send 10 QUAI to john@email.com".';
     }
 
-    const intent = this.parseTransferIntent(text);
+    const intent = await this.parseTransferIntent(text);
     if (!intent) {
       return c.voiceNoIntent;
     }
@@ -680,7 +680,7 @@ export class WhatsappService {
     }
 
     try {
-      const fee = this.feesService.calculate(amountStr);
+      const fee = await this.feesService.calculate(amountStr);
       const total = (Number(amountStr) + Number(fee))
         .toFixed(4)
         .replace(/0+$/, '')
@@ -839,7 +839,7 @@ export class WhatsappService {
   //  Transfer intent parsing
   // ──────────────────────────────────────────────
 
-  private parseTransferIntent(body: string): SendIntent | null {
+  private async parseTransferIntent(body: string): Promise<SendIntent | null> {
     const match = body
       .trim()
       .match(/^(?:send|pay)\s+(\d+(?:[.,]\d+)?)\s*([a-z]{3,5})?\s+to\s+(.+)$/i);
@@ -857,7 +857,7 @@ export class WhatsappService {
         currency,
         recipientEmail: recipient,
         displayRecipient: recipient,
-        fee: this.feesService.calculate(amount),
+        fee: await this.feesService.calculate(amount),
       };
     }
 
@@ -867,7 +867,7 @@ export class WhatsappService {
         currency,
         recipientWhatsapp: recipient,
         displayRecipient: recipient,
-        fee: this.feesService.calculate(amount),
+        fee: await this.feesService.calculate(amount),
       };
     }
 
@@ -876,7 +876,7 @@ export class WhatsappService {
       currency,
       recipientUsername: recipient,
       displayRecipient: recipient,
-      fee: this.feesService.calculate(amount),
+      fee: await this.feesService.calculate(amount),
     };
   }
 

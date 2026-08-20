@@ -11,6 +11,7 @@ import { EmailModule } from './email/email.module';
 import { EscrowModule } from './escrow/escrow.module';
 import { FeesModule } from './fees/fees.module';
 import { MovementModule } from './movement/movement.module';
+import { PushModule } from './push/push.module';
 import { RequestModule } from './request/request.module';
 import { TransferModule } from './transfer/transfer.module';
 import { UsersModule } from './users/users.module';
@@ -44,6 +45,7 @@ import { WhatsappModule } from './whatsapp/whatsapp.module';
     BlipModule,
     RequestModule,
     AdminModule,
+    PushModule,
   ],
   controllers: [AppController],
   providers: [AppService],
