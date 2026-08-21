@@ -5,12 +5,12 @@ import { USERNAME_PATTERN } from '../username';
 export class ClaimUsernameDto {
   @ApiProperty({
     description:
-      'Custom username to claim, e.g. "basil.quai" or "basil@wype". Lowercase letters, digits, dots, hyphens, underscores or @, 3-31 characters.',
+      'Custom username to claim, e.g. "basil.quai". Must end with .quai. Lowercase letters, digits, dots, hyphens, underscores, 3-31 characters.',
     example: 'basil.quai',
   })
   @Matches(USERNAME_PATTERN, {
     message:
-      'username must be 3-31 characters using lowercase letters, digits, dots, hyphens, underscores or @',
+      'username must end with .quai and contain only lowercase letters, digits, dots, hyphens, or underscores (3-31 characters)',
   })
   username: string;
 }

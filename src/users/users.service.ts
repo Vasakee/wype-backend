@@ -165,7 +165,7 @@ export class UsersService {
     const normalized = username.trim().toLowerCase();
     if (!USERNAME_PATTERN.test(normalized)) {
       throw new BadRequestException(
-        'Username must be 3-31 characters using lowercase letters, digits, dots, hyphens, underscores or @',
+        'Username must end with .quai and contain only lowercase letters, digits, dots, hyphens, or underscores (3-31 characters)',
       );
     }
 

@@ -43,9 +43,9 @@ export class CreateEmailTransferDto {
   })
   @IsOptional()
   @IsString()
-  @Matches(/^[a-z0-9][a-z0-9._@-]{1,30}$/, {
+  @Matches(/^[a-z0-9][a-z0-9._-]{0,25}\.quai$/, {
     message:
-      'username must be 3-31 lowercase chars using letters, digits, dots, hyphens, underscores or @',
+      'username must end with .quai and contain only lowercase letters, digits, dots, hyphens, or underscores',
   })
   recipientUsername?: string;
 
